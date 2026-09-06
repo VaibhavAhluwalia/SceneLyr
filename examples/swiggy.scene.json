@@ -1,0 +1,38 @@
+{
+  "version": "0.2",
+  "id": "swiggy-order-flow",
+  "intent": {
+    "title": "Swiggy Order Architecture",
+    "purpose": "Explain the order path and supporting infrastructure",
+    "audience": "engineering presentation",
+    "direction": "left-to-right",
+    "density": "balanced",
+    "style": "presentation"
+  },
+  "nodes": [
+    { "id": "customer", "label": "Customer", "kind": "actor", "icon": "customer" },
+    { "id": "app", "label": "Swiggy App", "kind": "service", "icon": "app" },
+    { "id": "gateway", "label": "API Gateway", "kind": "service", "icon": "gateway" },
+    { "id": "orders", "label": "Order Service", "kind": "service", "importance": "primary" },
+    { "id": "restaurant", "label": "Restaurant", "kind": "external", "icon": "restaurant" },
+    { "id": "rider", "label": "Delivery Partner", "kind": "external", "icon": "rider" },
+    { "id": "kafka", "label": "Kafka", "kind": "queue", "icon": "kafka" },
+    { "id": "redis", "label": "Redis", "kind": "cache", "icon": "redis" },
+    { "id": "postgres", "label": "PostgreSQL", "kind": "database", "icon": "postgres" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "customer", "to": "app", "kind": "request" },
+    { "id": "e2", "from": "app", "to": "gateway", "kind": "request" },
+    { "id": "e3", "from": "gateway", "to": "orders", "kind": "request" },
+    { "id": "e4", "from": "orders", "to": "restaurant", "kind": "request" },
+    { "id": "e5", "from": "orders", "to": "rider", "kind": "request" },
+    { "id": "e6", "from": "orders", "to": "kafka", "kind": "async", "label": "events" },
+    { "id": "e7", "from": "orders", "to": "redis", "kind": "read", "label": "cache" },
+    { "id": "e8", "from": "orders", "to": "postgres", "kind": "write", "label": "persist" }
+  ],
+  "groups": [],
+  "constraints": [
+    { "type": "parallel", "nodeIds": ["restaurant", "rider"], "description": "Parallel downstream actors" }
+  ],
+  "assets": []
+}
