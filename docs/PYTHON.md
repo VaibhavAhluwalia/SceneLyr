@@ -44,8 +44,8 @@ HTML, and PowerPoint on disk.
 ## Commands
 
 ```bash
-scenelyr validate examples/swiggy.scene.json
-scenelyr compile examples/swiggy.scene.json artifacts
+scenelyr validate examples/order-platform.scene.json
+scenelyr compile examples/order-platform.scene.json artifacts
 scenelyr import-pixels input.png output.scene.json
 scenelyr capabilities
 scenelyr mcp

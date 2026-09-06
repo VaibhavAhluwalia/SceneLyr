@@ -18,9 +18,9 @@ def test_scene_operations_and_validation():
 
 
 def test_example_scene_json_is_accepted():
-    scene = SemanticScene.model_validate_json(open("examples/swiggy.scene.json", encoding="utf-8").read())
+    scene = SemanticScene.model_validate_json(open("examples/order-platform.scene.json", encoding="utf-8").read())
     assert len(scene.nodes) == 9
-    assert scene.to_dict()["constraints"][0]["nodeIds"] == ["restaurant", "rider"]
+    assert scene.to_dict()["constraints"][0]["nodeIds"] == ["provider", "operator"]
 
 
 def test_store_undo_redo_and_defensive_copy():

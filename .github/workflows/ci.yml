@@ -22,6 +22,6 @@ jobs:
           cache: pip
       - run: python -m pip install -e '.[dev]'
       - run: python -m pytest
-      - run: scenelyr validate examples/swiggy.scene.json
-      - run: scenelyr compile examples/swiggy.scene.json artifacts
+      - run: scenelyr validate examples/order-platform.scene.json
+      - run: scenelyr compile examples/order-platform.scene.json artifacts
       - run: python -m pip wheel . --no-deps --wheel-dir dist

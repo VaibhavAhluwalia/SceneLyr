@@ -1,0 +1,38 @@
+{
+  "version": "0.2",
+  "id": "order-platform-flow",
+  "intent": {
+    "title": "Order Platform Architecture",
+    "purpose": "Explain an order path and its supporting infrastructure",
+    "audience": "engineering presentation",
+    "direction": "left-to-right",
+    "density": "balanced",
+    "style": "presentation"
+  },
+  "nodes": [
+    { "id": "customer", "label": "Customer", "kind": "actor", "icon": "customer" },
+    { "id": "app", "label": "Customer App", "kind": "service", "icon": "app" },
+    { "id": "gateway", "label": "API Gateway", "kind": "service", "icon": "gateway" },
+    { "id": "orders", "label": "Order Service", "kind": "service", "importance": "primary" },
+    { "id": "provider", "label": "Service Provider", "kind": "external", "icon": "external" },
+    { "id": "operator", "label": "Fulfilment Operator", "kind": "external", "icon": "external" },
+    { "id": "events", "label": "Event Queue", "kind": "queue", "icon": "queue" },
+    { "id": "cache", "label": "Cache", "kind": "cache", "icon": "cache" },
+    { "id": "database", "label": "Database", "kind": "database", "icon": "database" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "customer", "to": "app", "kind": "request" },
+    { "id": "e2", "from": "app", "to": "gateway", "kind": "request" },
+    { "id": "e3", "from": "gateway", "to": "orders", "kind": "request" },
+    { "id": "e4", "from": "orders", "to": "provider", "kind": "request" },
+    { "id": "e5", "from": "orders", "to": "operator", "kind": "request" },
+    { "id": "e6", "from": "orders", "to": "events", "kind": "async", "label": "events" },
+    { "id": "e7", "from": "orders", "to": "cache", "kind": "read", "label": "cache" },
+    { "id": "e8", "from": "orders", "to": "database", "kind": "write", "label": "persist" }
+  ],
+  "groups": [],
+  "constraints": [
+    { "type": "parallel", "nodeIds": ["provider", "operator"], "description": "Parallel downstream participants" }
+  ],
+  "assets": []
+}

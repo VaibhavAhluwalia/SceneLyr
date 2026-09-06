@@ -44,7 +44,7 @@ See `docs/PHASES.md` for the implementation gates.
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/pytest
-.venv/bin/scenelyr compile examples/swiggy.scene.json
+.venv/bin/scenelyr compile examples/order-platform.scene.json
 .venv/bin/scenelyr import-pixels diagram.png extracted.scene.json
 ```
 
@@ -58,9 +58,9 @@ The Python package provides strict SceneLyr models, deterministic layout, SVG/HT
 The compile command writes:
 
 ```text
-artifacts/swiggy.svg
-artifacts/swiggy.html
-artifacts/swiggy.pptx
+artifacts/order-platform.svg
+artifacts/order-platform.html
+artifacts/order-platform.pptx
 ```
 
 ## MCP
@@ -107,7 +107,7 @@ src/scenelyr/   Python-first implementation
   mcp_server.py direct Python MCP server
 tests_py/       Python regression and adapter tests
 examples/
-  swiggy.scene.json
+  order-platform.scene.json
 docs/
 ```
 
