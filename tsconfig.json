@@ -1,17 +1,19 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./packages/core" },
-    { "path": "./packages/layout" },
-    { "path": "./packages/svg" }
-  ],
   "compilerOptions": {
-    "strict": true,
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist",
     "declaration": true,
-    "sourceMap": true,
-    "skipLibCheck": true
-  }
+    "sourceMap": true
+  },
+  "include": ["packages/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", "artifacts", "tests"]
 }
