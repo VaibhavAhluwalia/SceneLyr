@@ -5,8 +5,7 @@ and cross-platform CI gates are consistently green.
 
 ## Required before publishing
 
-- Choose and add an explicit open-source license. This is an owner decision; do not
-  assume a license from repository visibility.
+- Confirm the MIT license and copyright notice remain included in source distributions.
 - Review and commit the Python migration as one coherent change.
 - Confirm the Ubuntu and macOS jobs pass on Python 3.11 and 3.12.
 - Build and install the wheel in a clean environment.

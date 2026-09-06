@@ -1,5 +1,7 @@
 # SceneLyr
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **The semantic visual layer for AI agents.**
 
 SceneLyr turns semantic intent into structured, editable, presentation-quality visual scenes without forcing agents to micromanage coordinates. It is implemented as one Python package with optional browser and MCP adapters.
@@ -137,3 +139,7 @@ SceneLyr 0.1 is experimental software. Clean flowcharts are the supported target
 low-resolution images, crossed or branched connectors, handwriting, photographs, OCR,
 and inferred arrow direction require human review. See `docs/RELEASING.md` before
 publishing a tag or package.
+
+## License
+
+SceneLyr is open-source software released under the [MIT License](LICENSE).
