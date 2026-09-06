@@ -1,0 +1,17 @@
+{
+  "name": "scenelyr",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The semantic visual layer for AI agents",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "example": "tsx examples/swiggy.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
