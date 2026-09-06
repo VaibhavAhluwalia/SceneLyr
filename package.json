@@ -4,7 +4,8 @@
   "private": true,
   "description": "The semantic visual layer for AI agents",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "packageManager": "npm@11.6.0",
+  "engines": { "node": ">=20", "npm": ">=11.6.0" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
