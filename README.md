@@ -135,7 +135,7 @@ No model provider is required. Deterministic import is intended for clean diagra
 
 ## Release status
 
-SceneLyr 0.1 is experimental software. Clean flowcharts are the supported target;
+**SceneLyr 0.1.0 — Initial Release.** Clean flowcharts are the supported target;
 low-resolution images, crossed or branched connectors, handwriting, photographs, OCR,
 and inferred arrow direction require human review. See `docs/RELEASING.md` before
 publishing a tag or package.

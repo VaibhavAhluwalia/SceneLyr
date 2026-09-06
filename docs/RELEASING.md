@@ -1,7 +1,7 @@
 # Public release checklist
 
-SceneLyr 0.1 should be described as an experimental alpha until the connector benchmark
-and cross-platform CI gates are consistently green.
+SceneLyr 0.1.0 is the initial release. Release notes must state the supported input
+boundary and known extraction limitations clearly.
 
 ## Required before publishing
 
@@ -12,7 +12,8 @@ and cross-platform CI gates are consistently green.
 - Validate the repository Codex plugin and marketplace manifests.
 - Confirm no personal images, generated imports, credentials, or local paths are tracked.
 - Publish a test-fixture provenance note for every redistributed image.
-- Mark the release as experimental and state that extraction requires human review.
+- Describe the release as “SceneLyr 0.1.0 — Initial Release” and state that extraction
+  requires human review.
 
 ## Accuracy statement
 
@@ -28,5 +29,5 @@ inputs.
 2. Review the working-tree diff.
 3. Commit and push the migration.
 4. Wait for the full CI matrix.
-5. Tag the first public build as an alpha or prerelease.
+5. Tag the first public build as `v0.1.0` with the title “Initial Release”.
 6. Publish the plugin installation instructions with the matching source revision.
