@@ -1,0 +1,27 @@
+{
+  "name": "scenelyr",
+  "version": "0.1.0",
+  "description": "Import diagram images locally, inspect semantic objects, edit relationships, and export editable visuals.",
+  "author": {
+    "name": "Vaibhav Ahluwalia",
+    "url": "https://github.com/VaibhavAhluwalia"
+  },
+  "repository": "https://github.com/VaibhavAhluwalia/SceneLyr",
+  "keywords": ["diagrams", "ocr", "mcp", "svg", "powerpoint", "local-first"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "SceneLyr",
+    "shortDescription": "Turn diagram images into editable semantic scenes.",
+    "longDescription": "SceneLyr runs locally to detect diagram objects and connectors, read printed labels with optional on-device OCR, edit the semantic graph, and export JSON, SVG, HTML, and editable PowerPoint.",
+    "developerName": "Vaibhav Ahluwalia",
+    "category": "Productivity",
+    "capabilities": ["Local image import", "On-device OCR", "Semantic diagram editing", "SVG and PowerPoint export"],
+    "brandColor": "#4F5BD5",
+    "defaultPrompt": [
+      "Import this diagram and list its objects and arrows.",
+      "Correct the labels and relationships in my saved scene.",
+      "Export this SceneLyr diagram as SVG and PowerPoint."
+    ]
+  }
+}

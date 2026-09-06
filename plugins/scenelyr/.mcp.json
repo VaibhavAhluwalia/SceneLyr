@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "scenelyr": {
+      "command": "./scripts/launch_mcp.sh",
+      "args": [],
+      "cwd": ".",
+      "enabled": true,
+      "startup_timeout_sec": 180,
+      "env_vars": []
+    }
+  }
+}

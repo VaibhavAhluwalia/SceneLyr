@@ -1,0 +1,20 @@
+{
+  "name": "scenelyr",
+  "interface": {
+    "displayName": "SceneLyr"
+  },
+  "plugins": [
+    {
+      "name": "scenelyr",
+      "source": {
+        "source": "local",
+        "path": "./plugins/scenelyr"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
