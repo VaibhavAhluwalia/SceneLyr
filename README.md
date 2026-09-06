@@ -131,10 +131,6 @@ For deterministic diagram import, no provider is required:
 
 No model provider is required. Deterministic import is intended for clean diagrams; arbitrary photographs and semantic interpretation remain outside its reliable boundary.
 
-## Next quality frontier
-
-The architecture is now testable end-to-end. The next work should be judged against competitors rather than by adding more primitives: benchmark tool calls, generation time, overlap/crossing defects, human preference, and slide-readiness versus raw SVG, Mermaid, Excalidraw MCP and other canvas agents.
-
 ## Release status
 
 SceneLyr 0.1 is experimental software. Clean flowcharts are the supported target;
