@@ -68,8 +68,8 @@ def _decode(path: str | Path) -> tuple[bytes, np.ndarray]:
     if decoded.ndim == 2:
         image = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGR)
     elif decoded.shape[2] == 4:
-        alpha = decoded[:, :, 3:4].astype(np.float32) / 255
-        image = (decoded[:, :, :3] * alpha + 255 * (1 - alpha)).astype(np.uint8)
+        opacity = decoded[:, :, 3:4].astype(np.float32) / 255
+        image = (decoded[:, :, :3] * opacity + 255 * (1 - opacity)).astype(np.uint8)
     else:
         image = decoded[:, :, :3]
     if image.shape[0] * image.shape[1] > MAX_PIXELS:
