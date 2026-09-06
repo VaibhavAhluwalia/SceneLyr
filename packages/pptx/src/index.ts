@@ -1,7 +1,12 @@
-import PptxGenJS from "pptxgenjs";
+import { createRequire } from "node:module";
 import type { SemanticScene } from "../../core/src/index.js";
 import { resolveNodeAsset } from "../../assets/src/index.js";
 import type { LayoutScene, LayoutPoint } from "../../layout/src/index.js";
+
+const require = createRequire(import.meta.url);
+// PptxGenJS exposes a CommonJS constructor. Keep it runtime-resolved so the
+// NodeNext ESM build does not mistake the module namespace for the constructor.
+const PptxGenJS = require("pptxgenjs") as any;
 
 const PALETTE: Record<string, { fill: string; line: string; accent: string }> = {
   actor: { fill: "EFF6FF", line: "93C5FD", accent: "2563EB" },
