@@ -1,4 +1,4 @@
-import ELK from "elkjs/lib/elk.bundled.js";
+import { createRequire } from "node:module";
 import type { SemanticScene } from "../../core/src/index.js";
 
 export interface LayoutPoint {
@@ -36,7 +36,13 @@ export interface LayoutScene {
   edges: PositionedEdge[];
 }
 
-const elk = new ELK();
+// elkjs ships a CommonJS-compatible bundled constructor. Using createRequire here
+// keeps NodeNext/ESM builds and runtime behavior aligned across Node versions.
+const require = createRequire(import.meta.url);
+const ElkConstructor = require("elkjs/lib/elk.bundled.js") as new () => {
+  layout(graph: unknown): Promise<any>;
+};
+const elk = new ElkConstructor();
 
 function nodeSize(label: string, kind: string): { width: number; height: number } {
   if (kind === "actor" || kind === "external") return { width: 170, height: 74 };
