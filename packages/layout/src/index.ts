@@ -1,4 +1,10 @@
+import ELK from "elkjs/lib/elk.bundled.js";
 import type { SemanticScene } from "../../core/src/index.js";
+
+export interface LayoutPoint {
+  x: number;
+  y: number;
+}
 
 export interface PositionedNode {
   id: string;
@@ -8,13 +14,19 @@ export interface PositionedNode {
   y: number;
   width: number;
   height: number;
+  importance?: string;
+  assetId?: string;
+  icon?: string;
+  group?: string;
 }
 
 export interface PositionedEdge {
+  id: string;
   from: string;
   to: string;
   label?: string;
   kind?: string;
+  points: LayoutPoint[];
 }
 
 export interface LayoutScene {
@@ -24,63 +36,94 @@ export interface LayoutScene {
   edges: PositionedEdge[];
 }
 
-/**
- * Dependency-layer layout. Agents specify relationships; SceneLyr owns geometry.
- * This intentionally starts dependency-free so the IR contract can stabilize
- * before an ELK adapter is introduced.
- */
-export function layoutScene(scene: SemanticScene): LayoutScene {
-  const incoming = new Map(scene.nodes.map((node) => [node.id, 0]));
-  const outgoing = new Map(scene.nodes.map((node) => [node.id, [] as string[]]));
-  for (const edge of scene.edges) {
-    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
-    outgoing.get(edge.from)?.push(edge.to);
-  }
+const elk = new ELK();
 
-  const level = new Map<string, number>();
-  const queue = scene.nodes.filter((node) => incoming.get(node.id) === 0).map((node) => node.id);
-  for (const id of queue) level.set(id, 0);
+function nodeSize(label: string, kind: string): { width: number; height: number } {
+  if (kind === "actor" || kind === "external") return { width: 170, height: 74 };
+  if (kind === "database" || kind === "cache" || kind === "queue") return { width: 180, height: 78 };
+  const width = Math.max(170, Math.min(260, 100 + label.length * 7));
+  return { width, height: 76 };
+}
 
-  while (queue.length) {
-    const id = queue.shift()!;
-    for (const next of outgoing.get(id) ?? []) {
-      level.set(next, Math.max(level.get(next) ?? 0, (level.get(id) ?? 0) + 1));
-      incoming.set(next, (incoming.get(next) ?? 1) - 1);
-      if (incoming.get(next) === 0) queue.push(next);
-    }
-  }
+function fallbackPoints(a: PositionedNode, b: PositionedNode): LayoutPoint[] {
+  const start = { x: a.x + a.width, y: a.y + a.height / 2 };
+  const end = { x: b.x, y: b.y + b.height / 2 };
+  const midX = (start.x + end.x) / 2;
+  return [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
+}
 
-  for (const node of scene.nodes) if (!level.has(node.id)) level.set(node.id, 0);
-  const layers = new Map<number, typeof scene.nodes>();
-  for (const node of scene.nodes) {
-    const n = level.get(node.id)!;
-    layers.set(n, [...(layers.get(n) ?? []), node]);
-  }
+/** SceneLyr owns geometry. The agent supplies semantic nodes and relationships only. */
+export async function layoutScene(scene: SemanticScene): Promise<LayoutScene> {
+  const direction = scene.intent?.direction === "top-to-bottom" ? "DOWN" : "RIGHT";
+  const density = scene.intent?.density ?? "balanced";
+  const nodeGap = density === "compact" ? 32 : density === "spacious" ? 72 : 48;
+  const layerGap = density === "compact" ? 72 : density === "spacious" ? 150 : 110;
 
-  const horizontal = scene.intent?.direction !== "top-to-bottom";
-  const gapX = scene.intent?.density === "compact" ? 80 : 130;
-  const gapY = scene.intent?.density === "compact" ? 40 : 70;
-  const nodeW = 180;
-  const nodeH = 72;
-  const margin = 60;
-  const positioned: PositionedNode[] = [];
+  const graph: any = {
+    id: scene.id,
+    layoutOptions: {
+      "elk.algorithm": "layered",
+      "elk.direction": direction,
+      "elk.edgeRouting": "ORTHOGONAL",
+      "elk.spacing.nodeNode": String(nodeGap),
+      "elk.layered.spacing.nodeNodeBetweenLayers": String(layerGap),
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+      "elk.padding": "[top=96,left=64,bottom=64,right=64]"
+    },
+    children: scene.nodes.map((node) => {
+      const size = nodeSize(node.label, node.kind);
+      return { id: node.id, width: size.width, height: size.height };
+    }),
+    edges: scene.edges.map((edge, index) => ({
+      id: edge.id ?? `edge-${index + 1}`,
+      sources: [edge.from],
+      targets: [edge.to],
+      labels: edge.label ? [{ text: edge.label, width: Math.max(42, edge.label.length * 7), height: 20 }] : undefined
+    }))
+  };
 
-  for (const [layer, nodes] of [...layers.entries()].sort(([a], [b]) => a - b)) {
-    nodes.forEach((node, row) => positioned.push({
+  const result: any = await elk.layout(graph);
+  const semanticById = new Map(scene.nodes.map((node) => [node.id, node]));
+  const nodes: PositionedNode[] = (result.children ?? []).map((node: any) => {
+    const semantic = semanticById.get(node.id)!;
+    return {
       id: node.id,
-      label: node.label,
-      kind: node.kind,
-      x: horizontal ? margin + layer * (nodeW + gapX) : margin + row * (nodeW + gapX),
-      y: horizontal ? margin + row * (nodeH + gapY) : margin + layer * (nodeH + gapY),
-      width: nodeW,
-      height: nodeH
-    }));
-  }
+      label: semantic.label,
+      kind: semantic.kind,
+      x: node.x ?? 0,
+      y: node.y ?? 0,
+      width: node.width ?? 180,
+      height: node.height ?? 76,
+      importance: semantic.importance,
+      assetId: semantic.assetId,
+      icon: semantic.icon,
+      group: semantic.group
+    };
+  });
+
+  const positionedById = new Map(nodes.map((node) => [node.id, node]));
+  const semanticEdgeById = new Map(scene.edges.map((edge, index) => [edge.id ?? `edge-${index + 1}`, edge]));
+  const edges: PositionedEdge[] = (result.edges ?? []).map((edge: any) => {
+    const semantic = semanticEdgeById.get(edge.id)!;
+    const firstSection = edge.sections?.[0];
+    const points: LayoutPoint[] = firstSection
+      ? [firstSection.startPoint, ...(firstSection.bendPoints ?? []), firstSection.endPoint].map((point: any) => ({ x: point.x, y: point.y }))
+      : fallbackPoints(positionedById.get(semantic.from)!, positionedById.get(semantic.to)!);
+    return {
+      id: edge.id,
+      from: semantic.from,
+      to: semantic.to,
+      label: semantic.label,
+      kind: semantic.kind,
+      points
+    };
+  });
 
   return {
-    width: Math.max(800, ...positioned.map((n) => n.x + n.width + margin)),
-    height: Math.max(450, ...positioned.map((n) => n.y + n.height + margin)),
-    nodes: positioned,
-    edges: scene.edges.map((edge) => ({ from: edge.from, to: edge.to, label: edge.label, kind: edge.kind }))
+    width: Math.ceil(result.width ?? 1200),
+    height: Math.ceil(result.height ?? 700),
+    nodes,
+    edges
   };
 }

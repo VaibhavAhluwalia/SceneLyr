@@ -1,0 +1,10 @@
+node_modules/
+dist/
+artifacts/
+*.svg
+*.pptx
+*.html
+.DS_Store
+.env
+.env.*
+coverage/
