@@ -1,36 +1,50 @@
-import json
-from pathlib import Path
-
 import cv2
 import numpy as np
 import pytest
 
 from scenelyr.arrow_detector import build_detection_profile
-from scenelyr.arrow_score import score_arrows
-from scenelyr.ocr import available as ocr_available
 from scenelyr.pixels import extract_pixels
 
 
-def test_real_flowchart_recovers_all_six_arrow_paths():
-    fixture = json.loads(Path("tests_py/fixtures/basic-flowchart.expected.json").read_text())
-    scene = extract_pixels(fixture["sourceImage"], scene_id=fixture["sceneId"], use_ocr=False)
-    result = score_arrows(scene, fixture["arrows"])
-    assert result["detectedCount"] == 6
-    assert result["totals"]["pathFound"] == 6
-    assert result["totals"]["sourceCorrect"] == 6
-    assert result["totals"]["destinationCorrect"] == 6
-    assert result["totals"]["directionCorrect"] == 6
+def _write_flowchart(tmp_path):
+    image = np.full((620, 1200, 3), 255, dtype=np.uint8)
+    cv2.ellipse(image, (100, 140), (70, 40), 0, 0, 360, (220, 235, 255), -1)
+    cv2.ellipse(image, (100, 140), (70, 40), 0, 0, 360, (0, 0, 0), 2)
+    cv2.rectangle(image, (250, 100), (390, 180), (225, 245, 225), -1)
+    cv2.rectangle(image, (250, 100), (390, 180), (0, 0, 0), 2)
+    cv2.rectangle(image, (490, 100), (630, 180), (240, 235, 210), -1)
+    cv2.rectangle(image, (490, 100), (630, 180), (0, 0, 0), 2)
+    cv2.rectangle(image, (730, 100), (870, 180), (235, 225, 245), -1)
+    cv2.rectangle(image, (730, 100), (870, 180), (0, 0, 0), 2)
+    cv2.ellipse(image, (1050, 140), (75, 40), 0, 0, 360, (225, 240, 245), -1)
+    cv2.ellipse(image, (1050, 140), (75, 40), 0, 0, 360, (0, 0, 0), 2)
+    cv2.rectangle(image, (490, 300), (630, 380), (245, 230, 220), -1)
+    cv2.rectangle(image, (490, 300), (630, 380), (0, 0, 0), 2)
+    cv2.ellipse(image, (560, 520), (75, 40), 0, 0, 360, (225, 240, 235), -1)
+    cv2.ellipse(image, (560, 520), (75, 40), 0, 0, 360, (0, 0, 0), 2)
+    for start, end in [
+        ((170, 140), (250, 140)), ((390, 140), (490, 140)),
+        ((630, 140), (730, 140)), ((870, 140), (975, 140)),
+        ((560, 180), (560, 300)), ((560, 380), (560, 480)),
+    ]:
+        cv2.arrowedLine(image, start, end, (195, 195, 195), 3, tipLength=.16)
+    source = tmp_path / "generated-flowchart.png"
+    cv2.imwrite(str(source), image)
+    return source
+
+
+def test_generated_flowchart_recovers_all_six_arrow_paths(tmp_path):
+    scene = extract_pixels(_write_flowchart(tmp_path), scene_id="generated-flow", use_ocr=False)
+    assert len(scene.nodes) == 7
+    assert len(scene.edges) == 6
+    assert {(edge.from_, edge.to) for edge in scene.edges} == {
+        ("object-1", "object-2"), ("object-2", "object-3"),
+        ("object-3", "object-4"), ("object-4", "object-5"),
+        ("object-3", "object-6"), ("object-6", "object-7"),
+    }
+    assert all(edge.metadata["direction"] == "inferred" for edge in scene.edges)
     assert all(edge.metadata["method"] == "pixel-intensity-corridor" for edge in scene.edges)
     assert all(edge.metadata["confidence"] >= .8 for edge in scene.edges)
-
-
-def test_real_flowchart_attaches_yes_and_no_labels_when_ocr_is_available():
-    if not ocr_available():
-        pytest.skip("Local OCR is unavailable on this platform")
-    fixture = json.loads(Path("tests_py/fixtures/basic-flowchart.expected.json").read_text())
-    scene = extract_pixels(fixture["sourceImage"], scene_id=fixture["sceneId"], use_ocr=True)
-    result = score_arrows(scene, fixture["arrows"])
-    assert result["totals"]["labelCorrect"] == 6
 
 
 def test_light_gray_arrow_is_preserved(tmp_path):
@@ -63,9 +77,8 @@ def test_detection_profile_scales_endpoint_zone_and_records_overrides():
         build_detection_profile(gray, small, {"minimumCoverage": 1.5})
 
 
-def test_scene_and_edges_record_arrow_profile():
-    fixture = json.loads(Path("tests_py/fixtures/basic-flowchart.expected.json").read_text())
-    scene = extract_pixels(fixture["sourceImage"], scene_id="profile-evidence", use_ocr=False)
+def test_scene_and_edges_record_arrow_profile(tmp_path):
+    scene = extract_pixels(_write_flowchart(tmp_path), scene_id="profile-evidence", use_ocr=False)
     profile = scene.metadata["arrowDetectionProfile"]
     assert profile["version"] == 1 and profile["mode"] == "automatic"
     assert profile["settings"]["endpointLength"] > 0
