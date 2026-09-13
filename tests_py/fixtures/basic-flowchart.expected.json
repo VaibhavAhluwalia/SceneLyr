@@ -1,0 +1,12 @@
+{
+  "sceneId": "basic-flowchart-arrow-baseline",
+  "sourceImage": "data/experiments/basic-flowchart.png",
+  "arrows": [
+    {"id": "A-01", "from": "object-2", "to": "object-3"},
+    {"id": "A-02", "from": "object-3", "to": "object-1"},
+    {"id": "A-03", "from": "object-1", "to": "object-4", "label": "Yes"},
+    {"id": "A-04", "from": "object-4", "to": "object-5"},
+    {"id": "A-05", "from": "object-1", "to": "object-6", "label": "No"},
+    {"id": "A-06", "from": "object-6", "to": "object-7"}
+  ]
+}

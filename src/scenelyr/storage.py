@@ -12,6 +12,7 @@ import cv2
 
 from .compiler import compile_scene
 from .models import SemanticScene
+from .arrow_debug import persist_arrow_debug
 
 
 def data_root() -> Path:
@@ -31,6 +32,7 @@ def persist_import(scene: SemanticScene, source: bytes, filename: str) -> dict[s
              "svg": folder / "preview.svg", "html": folder / "inspector.html", "pptx": folder / "editable.pptx"}
     paths["source"].write_bytes(source)
     scene.metadata.update({"sourceImage": str(paths["source"]), "originalFilename": filename, "dataFolder": str(folder)})
+    persist_arrow_debug(scene, paths["source"], folder / "debug")
     persist_assets(scene, folder)
     paths["json"].write_text(json.dumps(scene.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     compile_scene(scene, svg_path=paths["svg"], html_path=paths["html"], pptx_path=paths["pptx"])
@@ -44,6 +46,9 @@ def save_scene(scene: SemanticScene) -> dict[str, Path]:
     paths = {"folder": folder, "json": folder / "scene.json", "svg": folder / "preview.svg",
              "html": folder / "inspector.html", "pptx": folder / "editable.pptx"}
     scene.metadata["dataFolder"] = str(folder)
+    source = scene.metadata.get("sourceImage")
+    if source and Path(source).is_file():
+        persist_arrow_debug(scene, source, folder / "debug")
     persist_assets(scene, folder)
     paths["json"].write_text(json.dumps(scene.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     compile_scene(scene, svg_path=paths["svg"], html_path=paths["html"], pptx_path=paths["pptx"])

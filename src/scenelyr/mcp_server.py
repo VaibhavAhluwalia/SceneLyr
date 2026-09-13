@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -112,6 +113,33 @@ def import_pixels(path: str, scene_id: str | None = None) -> str:
         store.create(scene)
     except ValueError:
         pass
+    return _json(scene)
+
+
+@mcp.tool()
+def inspect_arrow_detection_profile(scene_id: str) -> str:
+    """Return the automatic measurements, active settings, overrides, and provenance used for arrow detection."""
+    scene = _get(scene_id)
+    profile = scene.metadata.get("arrowDetectionProfile")
+    if not profile:
+        raise ValueError(f"Scene {scene_id} has no arrow detection profile; import its source image first")
+    return _json(profile)
+
+
+@mcp.tool()
+def redetect_arrows(scene_id: str, overrides: dict[str, Any] | None = None) -> str:
+    """Re-import a scene's source image with optional deterministic arrow-setting overrides."""
+    existing = _get(scene_id)
+    source_value = existing.metadata.get("sourceImage")
+    if not source_value or not Path(source_value).is_file():
+        raise ValueError(f"Scene {scene_id} has no readable source image")
+    source = Path(source_value)
+    scene = extract_pixels(source, scene_id=scene_id, arrow_overrides=overrides)
+    persist_import(scene, source.read_bytes(), source.name)
+    try:
+        store.create(scene)
+    except ValueError:
+        store.mutate(scene_id, lambda _: scene)
     return _json(scene)
 
 
