@@ -44,6 +44,7 @@ def test_generated_flowchart_recovers_all_six_arrow_paths(tmp_path):
     }
     assert all(edge.metadata["direction"] == "inferred" for edge in scene.edges)
     assert all(edge.metadata["method"] == "pixel-intensity-corridor" for edge in scene.edges)
+    assert all(edge.metadata["maskSource"] == "semantic-connector-mask" for edge in scene.edges)
     assert all(edge.metadata["confidence"] >= .8 for edge in scene.edges)
 
 
@@ -84,3 +85,4 @@ def test_scene_and_edges_record_arrow_profile(tmp_path):
     assert profile["settings"]["endpointLength"] > 0
     assert all(edge.metadata["profileVersion"] == profile["version"] for edge in scene.edges
                if edge.metadata["method"] == "pixel-intensity-corridor")
+    assert scene.metadata["imageMaskProfile"]["grayscalePreserved"] is True
