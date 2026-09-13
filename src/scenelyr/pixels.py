@@ -14,6 +14,7 @@ from .models import SemanticScene
 from .ocr import available as ocr_available, read_text
 from .arrow_detector import attach_branch_labels, build_detection_profile, detect_aligned_arrows
 from .image_masks import build_semantic_masks
+from .path_detector import trace_connector_paths
 
 MAX_PIXELS = 16_000_000
 
@@ -178,6 +179,13 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         gray, boxes, [node["id"] for node in nodes], profile=arrow_profile,
         connector_mask=semantic_masks["connectorMask"])
     known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
+    traced_edges, path_profile, _ = trace_connector_paths(
+        semantic_masks["connectorMask"], boxes, [node["id"] for node in nodes],
+        known_pairs=known_pairs, direction_settings=arrow_profile["settings"])
+    for traced in traced_edges:
+        traced["id"] = f"connection-{len(edges) + 1}"
+        edges.append(traced)
+    known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
     unread = sum(node["metadata"]["labelStatus"] == "unread" for node in nodes)
     warnings = []
     if unread:
@@ -226,6 +234,7 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                             "sourceSize": [width, height], "warnings": warnings,
                             "arrowDetectionProfile": arrow_profile,
                             "imageMaskProfile": mask_profile,
+                            "pathDetectionProfile": path_profile,
                             "ocrRegions": [{"bounds": item["bounds"], "role": "text"} for item in ocr_items],
                             "requiresReview": True, "modelUsed": False,
                             "ocrUsesLocalModel": bool(use_ocr and ocr_available()),
