@@ -13,6 +13,7 @@ import numpy as np
 from .models import SemanticScene
 from .ocr import available as ocr_available, read_text
 from .arrow_detector import attach_branch_labels, build_detection_profile, detect_aligned_arrows
+from .image_masks import build_semantic_masks
 
 MAX_PIXELS = 16_000_000
 
@@ -168,9 +169,14 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             ocr_error = str(error)
 
-    component_count, labels, stats, _ = cv2.connectedComponentsWithStats(residual, 8)
     arrow_profile = build_detection_profile(gray, boxes, arrow_overrides)
-    edges = detect_aligned_arrows(gray, boxes, [node["id"] for node in nodes], profile=arrow_profile)
+    text_bounds = [item["bounds"] for item in ocr_items if len(item.get("bounds", [])) == 4]
+    semantic_masks, mask_profile = build_semantic_masks(
+        gray, boxes, text_bounds, brightness_cutoff=arrow_profile["settings"]["brightnessCutoff"])
+    component_count, labels, stats, _ = cv2.connectedComponentsWithStats(residual, 8)
+    edges = detect_aligned_arrows(
+        gray, boxes, [node["id"] for node in nodes], profile=arrow_profile,
+        connector_mask=semantic_masks["connectorMask"])
     known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
     unread = sum(node["metadata"]["labelStatus"] == "unread" for node in nodes)
     warnings = []
@@ -219,6 +225,8 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                "metadata": {"importMode": "deterministic", "sourceImage": str(path),
                             "sourceSize": [width, height], "warnings": warnings,
                             "arrowDetectionProfile": arrow_profile,
+                            "imageMaskProfile": mask_profile,
+                            "ocrRegions": [{"bounds": item["bounds"], "role": "text"} for item in ocr_items],
                             "requiresReview": True, "modelUsed": False,
                             "ocrUsesLocalModel": bool(use_ocr and ocr_available()),
                             "ocrEngine": "apple-vision-local" if use_ocr and ocr_available() else None,

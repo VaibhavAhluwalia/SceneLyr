@@ -10,14 +10,18 @@ import cv2
 import numpy as np
 
 from .models import SemanticScene
+from .image_masks import build_semantic_masks
 
 
 STAGE_FILENAMES = {
     "grayscale": "01-grayscale.png",
     "threshold": "02-threshold.png",
-    "connectorMask": "03-connector-mask.png",
-    "components": "04-components.png",
-    "lineCandidates": "05-line-candidates.png",
+    "objectMask": "03-object-mask.png",
+    "textMask": "04-text-mask.png",
+    "connectorMask": "05-connector-mask.png",
+    "maskOverlay": "06-mask-overlay.png",
+    "components": "07-components.png",
+    "lineCandidates": "08-line-candidates.png",
 }
 
 
@@ -29,24 +33,29 @@ def _load_image(path: str | Path) -> np.ndarray:
     return image
 
 
-def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str, np.ndarray], list[dict[str, int]]]:
+def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str, np.ndarray], list[dict[str, int]], dict[str, Any]]:
     """Return named debug images and raw line candidates without changing the scene."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, threshold = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    connector_mask = threshold.copy()
-    height, width = connector_mask.shape
+    boxes = []
     for node in scene.nodes:
         bounds = node.metadata.get("sourceBounds")
-        if not bounds or len(bounds) != 4:
-            continue
-        x, y, box_width, box_height = (int(value) for value in bounds)
-        cv2.rectangle(
-            connector_mask,
-            (max(0, x - 5), max(0, y - 5)),
-            (min(width - 1, x + box_width + 5), min(height - 1, y + box_height + 5)),
-            0,
-            -1,
-        )
+        if bounds and len(bounds) == 4:
+            boxes.append((*[int(value) for value in bounds], node.metadata.get("shape", "rectangle")))
+    text_bounds = [item["bounds"] for item in scene.metadata.get("ocrRegions", [])
+                   if len(item.get("bounds", [])) == 4]
+    cutoff = int(scene.metadata.get("arrowDetectionProfile", {}).get("settings", {}).get("brightnessCutoff", 220))
+    masks, mask_profile = build_semantic_masks(gray, boxes, text_bounds, brightness_cutoff=cutoff)
+    threshold = masks["rawInk"]
+    connector_mask = masks["connectorMask"]
+    height, width = connector_mask.shape
+
+    mask_overlay = image.copy()
+    overlay = np.zeros_like(image)
+    overlay[masks["objectMask"] > 0] = (230, 90, 80)
+    overlay[masks["textMask"] > 0] = (40, 175, 230)
+    overlay[masks["connectorMask"] > 0] = (70, 175, 85)
+    active = np.any(overlay > 0, axis=2)
+    mask_overlay[active] = cv2.addWeighted(mask_overlay, .35, overlay, .65, 0)[active]
 
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(connector_mask, 8)
     components = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -81,17 +90,20 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
     return {
         "grayscale": gray,
         "threshold": threshold,
+        "objectMask": masks["objectMask"],
+        "textMask": masks["textMask"],
         "connectorMask": connector_mask,
+        "maskOverlay": mask_overlay,
         "components": components,
         "lineCandidates": overlay,
-    }, candidates
+    }, candidates, mask_profile
 
 
 def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_dir: str | Path) -> dict[str, Any]:
     """Write every M1 stage and a manifest beside the persisted scene."""
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    stages, candidates = build_arrow_debug(_load_image(source_path), scene)
+    stages, candidates, mask_profile = build_arrow_debug(_load_image(source_path), scene)
     stage_records = []
     for name, image in stages.items():
         path = output / STAGE_FILENAMES[name]
@@ -99,10 +111,10 @@ def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_di
             raise OSError(f"Could not write arrow debug stage: {path}")
         stage_records.append({"id": name, "file": str(path)})
     manifest = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "sceneId": scene.id,
         "sourceImage": str(source_path),
-        "nodeMaskPadding": 5,
+        "maskProfile": mask_profile,
         "stages": stage_records,
         "lineCandidates": candidates,
         "candidateCount": len(candidates),

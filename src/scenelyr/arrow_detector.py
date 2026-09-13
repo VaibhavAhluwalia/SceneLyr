@@ -156,12 +156,15 @@ def detect_aligned_arrows(
     node_ids: list[str],
     *,
     profile: dict[str, Any] | None = None,
+    connector_mask: np.ndarray | None = None,
 ) -> list[dict[str, Any]]:
     """Recover straight arrows between adjacent, horizontally or vertically aligned nodes."""
     profile = profile or build_detection_profile(gray, boxes)
     settings = profile["settings"]
     brightness_cutoff = int(settings["brightnessCutoff"])
-    mask = np.where(gray <= brightness_cutoff, 255, 0).astype(np.uint8)
+    mask_source = "semantic-connector-mask" if connector_mask is not None else "brightness-threshold"
+    mask = (connector_mask.copy() if connector_mask is not None
+            else np.where(gray <= brightness_cutoff, 255, 0).astype(np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 7), np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 3), np.uint8))
     found: list[dict[str, Any]] = []
@@ -191,6 +194,7 @@ def detect_aligned_arrows(
                     **candidate,
                     "axis": axis,
                     "brightnessCutoff": brightness_cutoff,
+                    "maskSource": mask_source,
                     "profileVersion": profile["version"],
                     "requiresReview": bool(candidate["direction"] == "unknown" or candidate["confidence"] < .82),
                     "method": "pixel-intensity-corridor",
