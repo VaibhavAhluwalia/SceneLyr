@@ -11,6 +11,7 @@ import numpy as np
 
 from .models import SemanticScene
 from .image_masks import build_semantic_masks
+from .path_detector import prepare_path_mask
 
 
 STAGE_FILENAMES = {
@@ -19,9 +20,12 @@ STAGE_FILENAMES = {
     "objectMask": "03-object-mask.png",
     "textMask": "04-text-mask.png",
     "connectorMask": "05-connector-mask.png",
-    "maskOverlay": "06-mask-overlay.png",
-    "components": "07-components.png",
-    "lineCandidates": "08-line-candidates.png",
+    "bridgedConnectors": "06-bridged-connectors.png",
+    "pathSkeleton": "07-path-skeleton.png",
+    "tracedPaths": "08-traced-paths.png",
+    "maskOverlay": "09-mask-overlay.png",
+    "components": "10-components.png",
+    "lineCandidates": "11-line-candidates.png",
 }
 
 
@@ -47,6 +51,7 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
     masks, mask_profile = build_semantic_masks(gray, boxes, text_bounds, brightness_cutoff=cutoff)
     threshold = masks["rawInk"]
     connector_mask = masks["connectorMask"]
+    prepared_paths, path_profile = prepare_path_mask(connector_mask, boxes)
     height, width = connector_mask.shape
 
     mask_overlay = image.copy()
@@ -87,23 +92,38 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
             cv2.circle(overlay, (x1, y1), 5, (255, 110, 0), -1)
             cv2.circle(overlay, (x2, y2), 5, (0, 180, 60), -1)
 
+    traced_paths = image.copy()
+    for edge in scene.edges:
+        if edge.metadata.get("method") != "pixel-path-graph":
+            continue
+        points = edge.metadata.get("points", [])
+        if len(points) < 2:
+            continue
+        polyline = np.asarray(points, dtype=np.int32).reshape(-1, 1, 2)
+        cv2.polylines(traced_paths, [polyline], False, (40, 70, 235), 4, cv2.LINE_AA)
+        cv2.circle(traced_paths, tuple(points[0]), 6, (255, 130, 20), -1)
+        cv2.circle(traced_paths, tuple(points[-1]), 7, (35, 180, 70), -1)
+
     return {
         "grayscale": gray,
         "threshold": threshold,
         "objectMask": masks["objectMask"],
         "textMask": masks["textMask"],
         "connectorMask": connector_mask,
+        "bridgedConnectors": prepared_paths["bridged"],
+        "pathSkeleton": prepared_paths["skeleton"],
+        "tracedPaths": traced_paths,
         "maskOverlay": mask_overlay,
         "components": components,
         "lineCandidates": overlay,
-    }, candidates, mask_profile
+    }, candidates, {"mask": mask_profile, "path": path_profile}
 
 
 def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_dir: str | Path) -> dict[str, Any]:
     """Write every M1 stage and a manifest beside the persisted scene."""
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    stages, candidates, mask_profile = build_arrow_debug(_load_image(source_path), scene)
+    stages, candidates, profiles = build_arrow_debug(_load_image(source_path), scene)
     stage_records = []
     for name, image in stages.items():
         path = output / STAGE_FILENAMES[name]
@@ -111,10 +131,11 @@ def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_di
             raise OSError(f"Could not write arrow debug stage: {path}")
         stage_records.append({"id": name, "file": str(path)})
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "sceneId": scene.id,
         "sourceImage": str(source_path),
-        "maskProfile": mask_profile,
+        "maskProfile": profiles["mask"],
+        "pathProfile": scene.metadata.get("pathDetectionProfile", profiles["path"]),
         "stages": stage_records,
         "lineCandidates": candidates,
         "candidateCount": len(candidates),
