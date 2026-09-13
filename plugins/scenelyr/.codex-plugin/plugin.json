@@ -16,7 +16,7 @@
     "longDescription": "SceneLyr runs locally to detect diagram objects and connectors, read printed labels with optional on-device OCR, edit the semantic graph, and export JSON, SVG, HTML, and editable PowerPoint.",
     "developerName": "Vaibhav Ahluwalia",
     "category": "Productivity",
-    "capabilities": ["Local image import", "On-device OCR", "Semantic diagram editing", "SVG and PowerPoint export"],
+    "capabilities": ["Local image import", "On-device OCR", "Adaptive arrow detection", "Agent-guided parameter correction", "Semantic diagram editing", "SVG and PowerPoint export"],
     "brandColor": "#4F5BD5",
     "defaultPrompt": [
       "Import this diagram and list its objects and arrows.",

@@ -63,6 +63,10 @@ def test_no_command_ui_import_and_downloads(tmp_path, monkeypatch):
 
 
 def test_python_mcp_registers_tools():
-    names = {tool.name for tool in mcp._tool_manager.list_tools()}
+    tools = {tool.name: tool for tool in mcp._tool_manager.list_tools()}
+    names = set(tools)
     assert {"create_scene_tool", "import_pixels", "render_scene", "export_scene",
-            "rename_object", "reverse_arrow", "reconnect_arrow"} <= names
+            "rename_object", "reverse_arrow", "reconnect_arrow",
+            "inspect_arrow_detection_profile", "redetect_arrows"} <= names
+    override_schema = tools["redetect_arrows"].parameters["properties"]["overrides"]
+    assert {item["type"] for item in override_schema["anyOf"]} == {"object", "null"}

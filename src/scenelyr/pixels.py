@@ -12,6 +12,7 @@ import numpy as np
 
 from .models import SemanticScene
 from .ocr import available as ocr_available, read_text
+from .arrow_detector import attach_branch_labels, build_detection_profile, detect_aligned_arrows
 
 MAX_PIXELS = 16_000_000
 
@@ -77,7 +78,8 @@ def _decode(path: str | Path) -> tuple[bytes, np.ndarray]:
     return raw, image
 
 
-def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bool = True) -> SemanticScene:
+def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bool = True,
+                   arrow_overrides: dict | None = None) -> SemanticScene:
     raw, image = _decode(path)
     height, width = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -167,7 +169,9 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
             ocr_error = str(error)
 
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(residual, 8)
-    edges = []
+    arrow_profile = build_detection_profile(gray, boxes, arrow_overrides)
+    edges = detect_aligned_arrows(gray, boxes, [node["id"] for node in nodes], profile=arrow_profile)
+    known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
     unread = sum(node["metadata"]["labelStatus"] == "unread" for node in nodes)
     warnings = []
     if unread:
@@ -189,6 +193,8 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                 attached.append(index)
         if len(attached) == 2:
             first, second = attached
+            if frozenset((nodes[first]["id"], nodes[second]["id"])) in known_pairs:
+                continue
             first_score, second_score = _arrow_score(xs, ys, boxes[first]), _arrow_score(xs, ys, boxes[second])
             direction = "unknown"
             if max(first_score, second_score) >= min(first_score, second_score) * 1.35 + 4:
@@ -205,12 +211,14 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
             warnings.append("Connector touches more than two objects; crossing or branch withheld.")
     if unknown_directions:
         warnings.append(f"Arrow direction could not be inferred for {unknown_directions} connection(s).")
+    attach_branch_labels(edges, ocr_items)
     if not nodes:
         warnings.append("No supported enclosed objects detected; image is not decomposed.")
     payload = {"version": "0.2", "id": scene_id or "pixels-" + hashlib.sha256(raw).hexdigest()[:16],
                "nodes": nodes, "edges": edges, "groups": [], "constraints": [], "assets": [],
                "metadata": {"importMode": "deterministic", "sourceImage": str(path),
                             "sourceSize": [width, height], "warnings": warnings,
+                            "arrowDetectionProfile": arrow_profile,
                             "requiresReview": True, "modelUsed": False,
                             "ocrUsesLocalModel": bool(use_ocr and ocr_available()),
                             "ocrEngine": "apple-vision-local" if use_ocr and ocr_available() else None,
