@@ -67,3 +67,19 @@ def test_plain_line_is_left_unresolved():
     assert profile["results"]["unresolved"] == 1
     assert edges[0]["metadata"]["arrowhead"] is None
     assert edges[0]["metadata"]["direction"] == "unknown"
+
+
+def test_filled_head_remains_filled_when_it_touches_a_colored_box(tmp_path):
+    from scenelyr.pixels import extract_pixels
+
+    image = np.full((180, 400, 3), 255, np.uint8)
+    cv2.rectangle(image, (20, 50), (120, 120), (232, 170, 80), -1)
+    cv2.rectangle(image, (280, 50), (380, 120), (90, 185, 110), -1)
+    cv2.line(image, (120, 85), (257, 85), (35, 35, 35), 3)
+    cv2.fillConvexPoly(image, np.array([[280, 85], [255, 69], [255, 101]], np.int32), (35, 35, 35))
+    source = tmp_path / "touching-filled-head.png"
+    cv2.imwrite(str(source), image)
+
+    scene = extract_pixels(source, use_ocr=False)
+
+    assert scene.edges[0].metadata["arrowhead"]["type"] == "filled-triangle"

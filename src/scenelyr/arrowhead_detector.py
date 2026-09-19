@@ -95,6 +95,10 @@ def _endpoint_candidate(
     envelope = float(np.sum(widths[ignore_tip_bins:head_length])) if head_length else 0.0
     ink_count = int(np.sum(counts[ignore_tip_bins:head_length])) if head_length else 0
     fill_density = ink_count / max(1.0, envelope)
+    slice_fills = [float(counts[position] / widths[position])
+                   for position in range(ignore_tip_bins, head_length)
+                   if widths[position] >= max(float(settings["minimumWingSpan"]), shaft_width * 1.55)]
+    median_slice_fill = float(np.median(slice_fills)) if slice_fills else 0.0
     head_pixels = (bins >= ignore_tip_bins) & (bins < max(ignore_tip_bins + 1, head_length))
     positive = int(np.count_nonzero(offsets[head_pixels] > shaft_width / 2))
     negative = int(np.count_nonzero(offsets[head_pixels] < -shaft_width / 2))
@@ -114,7 +118,7 @@ def _endpoint_candidate(
         head_type = "none"
     elif aspect < float(settings["narrowAspect"]):
         head_type = "narrow"
-    elif fill_density >= float(settings["filledDensity"]):
+    elif median_slice_fill >= float(settings["filledDensity"]):
         head_type = "filled-triangle"
     else:
         head_type = "open-v"
@@ -131,6 +135,7 @@ def _endpoint_candidate(
         "shaftWidth": round(shaft_width, 2),
         "expansion": round(expansion, 3),
         "fillDensity": round(fill_density, 3),
+        "medianSliceFill": round(median_slice_fill, 3),
         "wingBalance": round(wing_balance, 3),
         "aspect": round(aspect, 3),
         "medianBrightness": round(brightness, 1),
