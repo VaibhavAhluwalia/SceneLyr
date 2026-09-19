@@ -26,6 +26,7 @@ STAGE_FILENAMES = {
     "maskOverlay": "09-mask-overlay.png",
     "components": "10-components.png",
     "lineCandidates": "11-line-candidates.png",
+    "arrowheadEvidence": "12-arrowhead-evidence.png",
 }
 
 
@@ -104,6 +105,22 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
         cv2.circle(traced_paths, tuple(points[0]), 6, (255, 130, 20), -1)
         cv2.circle(traced_paths, tuple(points[-1]), 7, (35, 180, 70), -1)
 
+    arrowhead_evidence = image.copy()
+    for edge in scene.edges:
+        points = edge.metadata.get("points", [])
+        if len(points) < 2:
+            continue
+        candidates_by_name = edge.metadata.get("arrowheadCandidates", {})
+        for name, fallback_point in (("start", points[0]), ("end", points[-1])):
+            candidate = candidates_by_name.get(name, {})
+            tip = candidate.get("tip", fallback_point)
+            detected = bool(candidate.get("detected"))
+            color = (40, 180, 70) if detected else (40, 165, 235)
+            cv2.circle(arrowhead_evidence, tuple(int(value) for value in tip), 11, color, 3, cv2.LINE_AA)
+            label = candidate.get("type", "none")
+            cv2.putText(arrowhead_evidence, str(label), (int(tip[0]) + 8, int(tip[1]) - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, .42, color, 1, cv2.LINE_AA)
+
     return {
         "grayscale": gray,
         "threshold": threshold,
@@ -116,6 +133,7 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
         "maskOverlay": mask_overlay,
         "components": components,
         "lineCandidates": overlay,
+        "arrowheadEvidence": arrowhead_evidence,
     }, candidates, {"mask": mask_profile, "path": path_profile}
 
 
@@ -131,11 +149,12 @@ def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_di
             raise OSError(f"Could not write arrow debug stage: {path}")
         stage_records.append({"id": name, "file": str(path)})
     manifest = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "sceneId": scene.id,
         "sourceImage": str(source_path),
         "maskProfile": profiles["mask"],
         "pathProfile": scene.metadata.get("pathDetectionProfile", profiles["path"]),
+        "arrowheadProfile": scene.metadata.get("arrowheadDetectionProfile"),
         "stages": stage_records,
         "lineCandidates": candidates,
         "candidateCount": len(candidates),
