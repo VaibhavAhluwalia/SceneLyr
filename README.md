@@ -48,6 +48,7 @@ python3 -m venv .venv
 .venv/bin/pytest
 .venv/bin/scenelyr compile examples/order-platform.scene.json
 .venv/bin/scenelyr import-pixels diagram.png extracted.scene.json
+.venv/bin/scenelyr validate-release artifacts/release-validation
 ```
 
 The Python package provides strict SceneLyr models, deterministic layout, SVG/HTML/PPTX export, offline pixel import, an optional FastAPI service, and a direct Python MCP server. FastAPI is an adapter—not a requirement for MCP or local use.
@@ -135,10 +136,11 @@ No model provider is required. Deterministic import is intended for clean diagra
 
 ## Release status
 
-**SceneLyr 0.1.0 — Initial Release.** Clean flowcharts are the supported target;
-low-resolution images, crossed or branched connectors, handwriting, photographs, OCR,
-and inferred arrow direction require human review. See `docs/RELEASING.md` before
-publishing a tag or package.
+**SceneLyr 0.1.0 — Initial Release.** Clean flowcharts are the supported target. The
+R-01 acceptance suite covers straight, bent, diagonal, pale, lightly broken, branched,
+joined, and crossed connectors plus filled and open arrowheads. Dense junctions,
+low-resolution images, handwriting, photographs, OCR, and uncertain direction still
+require human review. See `docs/RELEASING.md` before publishing a tag or package.
 
 ## License
 

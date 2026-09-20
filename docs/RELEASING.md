@@ -12,6 +12,7 @@ boundary and known extraction limitations clearly.
 - Validate the repository Codex plugin and marketplace manifests.
 - Confirm no personal images, generated imports, credentials, or local paths are tracked.
 - Publish a test-fixture provenance note for every redistributed image.
+- Run `scenelyr validate-release` and confirm every R-01 fixture passes.
 - Describe the release as “SceneLyr 0.1.0 — Initial Release” and state that extraction
   requires human review.
 

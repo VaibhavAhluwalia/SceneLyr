@@ -13,6 +13,7 @@ from .compiler import compile_scene
 from .core import add_edge, add_node, create_scene, remove_node, update_node
 from .models import SemanticScene
 from .pixels import extract_pixels
+from .release_validation import run_release_validation as execute_release_validation
 from .storage import list_imports, load_import, persist_import, save_scene
 from .store import SceneStore
 
@@ -144,6 +145,12 @@ def inspect_junction_detection_profile(scene_id: str) -> str:
     if not profile:
         raise ValueError(f"Scene {scene_id} has no junction detection profile; import its source image first")
     return _json(profile)
+
+
+@mcp.tool()
+def run_release_validation(output_dir: str) -> str:
+    """Run R-01 fixtures through the real importer and save a local HTML/JSON report."""
+    return _json(execute_release_validation(output_dir))
 
 
 @mcp.tool()
