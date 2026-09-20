@@ -9,6 +9,7 @@ from pathlib import Path
 from .compiler import compile_scene
 from .models import SemanticScene
 from .pixels import extract_pixels
+from .release_validation import run_release_validation
 
 
 def _scene(path: str) -> SemanticScene:
@@ -28,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1"); serve.add_argument("--port", type=int, default=8000)
     commands.add_parser("mcp", help="run direct Python MCP server over stdio")
     commands.add_parser("capabilities", help="show honest deterministic coverage and limits")
+    release = commands.add_parser("validate-release", help="run the R-01 image fixture acceptance suite")
+    release.add_argument("output_dir", nargs="?", default="artifacts/release-validation")
     return parser
 
 
@@ -54,10 +57,16 @@ def main(argv: list[str] | None = None) -> None:
         mcp_main()
     elif args.command == "capabilities":
         print(json.dumps({"modelUsed": False, "works": ["strict scene JSON", "deterministic layout", "SVG/HTML/PPTX",
-              "outlined and filled flowchart objects", "simple connectors", "limited geometric arrow inference"],
-              "requiresReview": ["text/OCR", "semantic object meaning", "crossings and branches", "photos", "handwriting"]}, indent=2))
+              "outlined and filled flowchart objects", "straight/bent/diagonal connectors",
+              "filled/open/pale arrowheads", "branches, joins, and clean crossings"],
+              "requiresReview": ["text/OCR", "semantic object meaning", "dense or ambiguous junctions",
+                                 "photos", "handwriting"]}, indent=2))
+    elif args.command == "validate-release":
+        report = run_release_validation(args.output_dir)
+        print(json.dumps(report, indent=2))
+        if not report["passed"]:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
     main()
-

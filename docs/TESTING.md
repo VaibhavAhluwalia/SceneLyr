@@ -38,3 +38,17 @@ Run the direct Python MCP server with:
 
 The installed SceneLyr Codex plugin launches this same server automatically. FastAPI
 and the browser UI are not involved in MCP calls.
+
+## R-01 release validation
+
+Run the deterministic image acceptance matrix and create a reviewable local report:
+
+```bash
+.venv/bin/scenelyr validate-release artifacts/release-validation
+```
+
+The command generates every fixture from documented OpenCV drawing primitives, imports
+the resulting images through the public pixel pipeline, and writes `report.json` plus
+`report.html`. It exits unsuccessfully if any expected object, relationship, junction
+type, withheld result, or deterministic provenance check differs. The same suite is
+available as `run_release_validation` over MCP and through the existing browser adapter.

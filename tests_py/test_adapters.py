@@ -69,6 +69,19 @@ def test_python_mcp_registers_tools():
             "rename_object", "reverse_arrow", "reconnect_arrow",
             "inspect_arrow_detection_profile", "inspect_arrowhead_detection_profile",
             "inspect_junction_detection_profile",
+            "run_release_validation",
             "redetect_arrows"} <= names
     override_schema = tools["redetect_arrows"].parameters["properties"]["overrides"]
     assert {item["type"] for item in override_schema["anyOf"]} == {"object", "null"}
+
+
+def test_release_validation_is_available_in_existing_ui(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCENELYR_DATA_DIR", str(tmp_path / "data"))
+    client = TestClient(app)
+    assert "Release validation" in client.get("/").text
+    result = client.post("/ui/release-validation")
+    assert result.status_code == 200
+    assert result.json()["summary"]["passed"] == 10
+    report = client.get(result.json()["reportUrl"])
+    assert report.status_code == 200
+    assert "SceneLyr R-01 validation" in report.text
