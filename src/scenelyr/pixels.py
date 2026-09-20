@@ -15,6 +15,7 @@ from .ocr import available as ocr_available, read_text
 from .arrow_detector import attach_branch_labels, build_detection_profile, detect_aligned_arrows
 from .image_masks import build_semantic_masks
 from .path_detector import trace_connector_paths
+from .arrowhead_detector import classify_arrowheads
 
 MAX_PIXELS = 16_000_000
 
@@ -225,6 +226,7 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
             warnings.append("Connector touches more than two objects; crossing or branch withheld.")
     if unknown_directions:
         warnings.append(f"Arrow direction could not be inferred for {unknown_directions} connection(s).")
+    arrowhead_profile = classify_arrowheads(gray, semantic_masks["connectorMask"], edges, boxes)
     attach_branch_labels(edges, ocr_items)
     if not nodes:
         warnings.append("No supported enclosed objects detected; image is not decomposed.")
@@ -235,6 +237,7 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                             "arrowDetectionProfile": arrow_profile,
                             "imageMaskProfile": mask_profile,
                             "pathDetectionProfile": path_profile,
+                            "arrowheadDetectionProfile": arrowhead_profile,
                             "ocrRegions": [{"bounds": item["bounds"], "role": "text"} for item in ocr_items],
                             "requiresReview": True, "modelUsed": False,
                             "ocrUsesLocalModel": bool(use_ocr and ocr_available()),

@@ -127,6 +127,16 @@ def inspect_arrow_detection_profile(scene_id: str) -> str:
 
 
 @mcp.tool()
+def inspect_arrowhead_detection_profile(scene_id: str) -> str:
+    """Return A-03 arrowhead measurements, thresholds, and classification totals."""
+    scene = _get(scene_id)
+    profile = scene.metadata.get("arrowheadDetectionProfile")
+    if not profile:
+        raise ValueError(f"Scene {scene_id} has no arrowhead detection profile; import its source image first")
+    return _json(profile)
+
+
+@mcp.tool()
 def redetect_arrows(scene_id: str, overrides: dict[str, Any] | None = None) -> str:
     """Re-import a scene's source image with optional deterministic arrow-setting overrides."""
     existing = _get(scene_id)

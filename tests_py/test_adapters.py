@@ -67,6 +67,7 @@ def test_python_mcp_registers_tools():
     names = set(tools)
     assert {"create_scene_tool", "import_pixels", "render_scene", "export_scene",
             "rename_object", "reverse_arrow", "reconnect_arrow",
-            "inspect_arrow_detection_profile", "redetect_arrows"} <= names
+            "inspect_arrow_detection_profile", "inspect_arrowhead_detection_profile",
+            "redetect_arrows"} <= names
     override_schema = tools["redetect_arrows"].parameters["properties"]["overrides"]
     assert {item["type"] for item in override_schema["anyOf"]} == {"object", "null"}

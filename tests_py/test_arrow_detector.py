@@ -42,10 +42,13 @@ def test_generated_flowchart_recovers_all_six_arrow_paths(tmp_path):
         ("object-3", "object-4"), ("object-4", "object-5"),
         ("object-3", "object-6"), ("object-6", "object-7"),
     }
-    assert all(edge.metadata["direction"] == "inferred" for edge in scene.edges)
+    assert all(edge.metadata["direction"] == "arrowhead" for edge in scene.edges)
     assert all(edge.metadata["method"] == "pixel-intensity-corridor" for edge in scene.edges)
     assert all(edge.metadata["maskSource"] == "semantic-connector-mask" for edge in scene.edges)
     assert all(edge.metadata["confidence"] >= .8 for edge in scene.edges)
+    assert scene.metadata["arrowheadDetectionProfile"]["results"]["classified"] == 6
+    assert all(edge.metadata["arrowhead"]["type"] in {"filled-triangle", "open-v", "narrow"}
+               for edge in scene.edges)
 
 
 def test_light_gray_arrow_is_preserved(tmp_path):
