@@ -137,6 +137,16 @@ def inspect_arrowhead_detection_profile(scene_id: str) -> str:
 
 
 @mcp.tool()
+def inspect_junction_detection_profile(scene_id: str) -> str:
+    """Return A-04 branch, join, crossing, and withheld-junction evidence."""
+    scene = _get(scene_id)
+    profile = scene.metadata.get("junctionDetectionProfile")
+    if not profile:
+        raise ValueError(f"Scene {scene_id} has no junction detection profile; import its source image first")
+    return _json(profile)
+
+
+@mcp.tool()
 def redetect_arrows(scene_id: str, overrides: dict[str, Any] | None = None) -> str:
     """Re-import a scene's source image with optional deterministic arrow-setting overrides."""
     existing = _get(scene_id)

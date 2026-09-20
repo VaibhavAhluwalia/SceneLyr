@@ -57,9 +57,10 @@ def test_import_persists_debug_manifest(tmp_path, monkeypatch):
     paths = persist_import(scene, source.read_bytes(), source.name)
     manifest = json.loads((paths["folder"] / "debug" / "manifest.json").read_text())
     assert manifest["sceneId"] == "persisted-debug"
-    assert len(manifest["stages"]) == 12
-    assert manifest["schemaVersion"] == 4
+    assert len(manifest["stages"]) == 13
+    assert manifest["schemaVersion"] == 5
     assert manifest["maskProfile"]["grayscalePreserved"] is True
     assert "pathProfile" in manifest
     assert "arrowheadProfile" in manifest
+    assert "junctionProfile" in manifest
     assert "Arrow debug" in paths["html"].read_text()

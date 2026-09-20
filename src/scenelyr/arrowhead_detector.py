@@ -109,6 +109,7 @@ def _endpoint_candidate(
     score = expansion_score * .48 + span_score * .27 + wing_balance * .25
     detected = bool(
         maximum_width >= float(settings["minimumWingSpan"])
+        and maximum_width - shaft_width >= float(settings["minimumWingSpan"])
         and head_length >= int(settings["minimumHeadLength"])
         and expansion >= float(settings["minimumExpansion"])
         and score >= float(settings["minimumHeadScore"])
@@ -142,6 +143,23 @@ def _endpoint_candidate(
     }
 
 
+def _route_interior_anchor(points: list[list[int]], *, start: bool, distance: float) -> list[int]:
+    """Return a shaft point far enough from the tip to ignore arrowhead wings."""
+    ordered = points if start else list(reversed(points))
+    remaining = float(distance)
+    current = np.asarray(ordered[0], dtype=float)
+    for raw_next in ordered[1:]:
+        next_point = np.asarray(raw_next, dtype=float)
+        segment = next_point - current
+        length = float(np.linalg.norm(segment))
+        if length >= remaining and length > 0:
+            point = current + segment * (remaining / length)
+            return [int(round(point[0])), int(round(point[1]))]
+        remaining -= length
+        current = next_point
+    return [int(value) for value in ordered[-1]]
+
+
 def classify_arrowheads(
     gray: np.ndarray,
     connector_mask: np.ndarray,
@@ -157,8 +175,11 @@ def classify_arrowheads(
         points = edge.get("metadata", {}).get("points", [])
         if len(points) < 2:
             continue
-        start = _endpoint_candidate(gray, connector_mask, points[0], points[1], settings)
-        end = _endpoint_candidate(gray, connector_mask, points[-1], points[-2], settings)
+        tangent_distance = float(settings["inspectionLength"]) * .9
+        start_anchor = _route_interior_anchor(points, start=True, distance=tangent_distance)
+        end_anchor = _route_interior_anchor(points, start=False, distance=tangent_distance)
+        start = _endpoint_candidate(gray, connector_mask, points[0], start_anchor, settings)
+        end = _endpoint_candidate(gray, connector_mask, points[-1], end_anchor, settings)
         edge["metadata"]["arrowheadCandidates"] = {"start": start, "end": end}
         candidates = [("start", start), ("end", end)]
         candidates.sort(

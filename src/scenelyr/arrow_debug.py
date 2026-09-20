@@ -27,6 +27,7 @@ STAGE_FILENAMES = {
     "components": "10-components.png",
     "lineCandidates": "11-line-candidates.png",
     "arrowheadEvidence": "12-arrowhead-evidence.png",
+    "junctionEvidence": "13-junction-evidence.png",
 }
 
 
@@ -121,6 +122,24 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
             cv2.putText(arrowhead_evidence, str(label), (int(tip[0]) + 8, int(tip[1]) - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, .42, color, 1, cv2.LINE_AA)
 
+    junction_evidence = image.copy()
+    junction_colors = {"branch": (40, 180, 70), "join": (220, 110, 30), "crossing": (180, 70, 210)}
+    for edge in scene.edges:
+        if edge.metadata.get("method") != "pixel-junction-graph":
+            continue
+        points = edge.metadata.get("points", [])
+        junction_type = str(edge.metadata.get("junctionType", "junction"))
+        color = junction_colors.get(junction_type, (40, 165, 235))
+        if len(points) >= 2:
+            cv2.polylines(junction_evidence, [np.asarray(points, np.int32).reshape(-1, 1, 2)],
+                          False, color, 4, cv2.LINE_AA)
+        center = edge.metadata.get("junctionCenter")
+        if center and len(center) == 2:
+            point = tuple(int(value) for value in center)
+            cv2.circle(junction_evidence, point, 12, color, 3, cv2.LINE_AA)
+            cv2.putText(junction_evidence, junction_type, (point[0] + 10, point[1] - 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, .45, color, 1, cv2.LINE_AA)
+
     return {
         "grayscale": gray,
         "threshold": threshold,
@@ -134,6 +153,7 @@ def build_arrow_debug(image: np.ndarray, scene: SemanticScene) -> tuple[dict[str
         "components": components,
         "lineCandidates": overlay,
         "arrowheadEvidence": arrowhead_evidence,
+        "junctionEvidence": junction_evidence,
     }, candidates, {"mask": mask_profile, "path": path_profile}
 
 
@@ -149,12 +169,13 @@ def persist_arrow_debug(scene: SemanticScene, source_path: str | Path, output_di
             raise OSError(f"Could not write arrow debug stage: {path}")
         stage_records.append({"id": name, "file": str(path)})
     manifest = {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "sceneId": scene.id,
         "sourceImage": str(source_path),
         "maskProfile": profiles["mask"],
         "pathProfile": scene.metadata.get("pathDetectionProfile", profiles["path"]),
         "arrowheadProfile": scene.metadata.get("arrowheadDetectionProfile"),
+        "junctionProfile": scene.metadata.get("junctionDetectionProfile"),
         "stages": stage_records,
         "lineCandidates": candidates,
         "candidateCount": len(candidates),

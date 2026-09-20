@@ -16,6 +16,7 @@ from .arrow_detector import attach_branch_labels, build_detection_profile, detec
 from .image_masks import build_semantic_masks
 from .path_detector import trace_connector_paths
 from .arrowhead_detector import classify_arrowheads
+from .junction_detector import detect_junctions
 
 MAX_PIXELS = 16_000_000
 
@@ -187,6 +188,12 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         traced["id"] = f"connection-{len(edges) + 1}"
         edges.append(traced)
     known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
+    junction_edges, junction_profile = detect_junctions(
+        gray, semantic_masks["connectorMask"], boxes, [node["id"] for node in nodes], known_pairs=known_pairs)
+    for junction in junction_edges:
+        junction["id"] = f"connection-{len(edges) + 1}"
+        edges.append(junction)
+    known_pairs = {frozenset((edge["from"], edge["to"])) for edge in edges}
     unread = sum(node["metadata"]["labelStatus"] == "unread" for node in nodes)
     warnings = []
     if unread:
@@ -222,8 +229,10 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                           "kind": "relationship", "metadata": {"direction": direction,
                           "endpointInk": [first_score, second_score], "requiresReview": True,
                           "method": "pixel-connectivity"}})
-        elif len(attached) > 2:
-            warnings.append("Connector touches more than two objects; crossing or branch withheld.")
+    if junction_profile["withheld"]:
+        warnings.append(
+            f"{len(junction_profile['withheld'])} multi-object connector(s) were ambiguous and withheld."
+        )
     if unknown_directions:
         warnings.append(f"Arrow direction could not be inferred for {unknown_directions} connection(s).")
     arrowhead_profile = classify_arrowheads(gray, semantic_masks["connectorMask"], edges, boxes)
@@ -238,6 +247,7 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
                             "imageMaskProfile": mask_profile,
                             "pathDetectionProfile": path_profile,
                             "arrowheadDetectionProfile": arrowhead_profile,
+                            "junctionDetectionProfile": junction_profile,
                             "ocrRegions": [{"bounds": item["bounds"], "role": "text"} for item in ocr_items],
                             "requiresReview": True, "modelUsed": False,
                             "ocrUsesLocalModel": bool(use_ocr and ocr_available()),
