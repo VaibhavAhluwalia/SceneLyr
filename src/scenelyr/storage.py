@@ -22,8 +22,14 @@ def data_root() -> Path:
     return root
 
 
+def scene_folder(scene_id: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", scene_id):
+        raise ValueError("Scene IDs used for storage must contain only letters, digits, dots, underscores and hyphens")
+    return data_root() / "imports" / scene_id
+
+
 def persist_import(scene: SemanticScene, source: bytes, filename: str) -> dict[str, Path]:
-    folder = data_root() / "imports" / re.sub(r"[^a-zA-Z0-9._-]", "-", scene.id)
+    folder = scene_folder(scene.id)
     folder.mkdir(parents=True, exist_ok=True)
     suffix = Path(filename).suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
@@ -41,7 +47,7 @@ def persist_import(scene: SemanticScene, source: bytes, filename: str) -> dict[s
 
 def save_scene(scene: SemanticScene) -> dict[str, Path]:
     """Persist semantic edits while preserving the originally uploaded image."""
-    folder = data_root() / "imports" / scene.id
+    folder = scene_folder(scene.id)
     folder.mkdir(parents=True, exist_ok=True)
     paths = {"folder": folder, "json": folder / "scene.json", "svg": folder / "preview.svg",
              "html": folder / "inspector.html", "pptx": folder / "editable.pptx"}
@@ -56,7 +62,7 @@ def save_scene(scene: SemanticScene) -> dict[str, Path]:
 
 
 def load_import(scene_id: str) -> SemanticScene | None:
-    path = data_root() / "imports" / scene_id / "scene.json"
+    path = scene_folder(scene_id) / "scene.json"
     return SemanticScene.model_validate_json(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 

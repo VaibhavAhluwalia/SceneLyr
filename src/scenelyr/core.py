@@ -37,6 +37,8 @@ def remove_node(scene: SemanticScene, node_id: str) -> SemanticScene:
     data = scene.to_dict()
     data["nodes"] = [node for node in data["nodes"] if node["id"] != node_id]
     data["edges"] = [edge for edge in data["edges"] if edge["from"] != node_id and edge["to"] != node_id]
+    data["constraints"] = [{**c, "nodeIds": [n for n in c["nodeIds"] if n != node_id]}
+                           for c in data.get("constraints", []) if any(n != node_id for n in c["nodeIds"])]
     for group in data.get("groups", []):
         group["nodeIds"] = [item for item in group["nodeIds"] if item != node_id]
     return SemanticScene.model_validate(data)
