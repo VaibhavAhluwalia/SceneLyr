@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>SceneLyr · Workspace</title><link rel="stylesheet" href="/web/workspace.css?v=workspace-6"><script src="/web/workspace.js?v=workspace-6" defer></script></head>
+<body>
+<a class="skip" href="#composer">Skip to commands</a>
+<header class="toolbar">
+ <div class="toolbar-group"><button id="toggle-sidebar" aria-label="Show or hide sidebar" aria-controls="sidebar" title="Sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button><div class="document-title"><strong id="scene-title">Workspace</strong><span id="scene-path">SceneLyr / On this computer</span></div></div>
+ <div class="toolbar-group"><button id="import-button" title="Import image">Import</button><button id="undo" disabled title="Undo · ⌘Z" aria-label="Undo">↶</button><button id="redo" disabled title="Redo · ⇧⌘Z" aria-label="Redo">↷</button><button id="validate" title="Release validation" aria-label="Release validation">Validate</button><details class="menu" id="export-menu"><summary>Export <span aria-hidden="true">⌄</span></summary><div class="menu-items" id="exports"><span>Import a scene to export</span></div></details><button id="toggle-inspector" aria-label="Show or hide inspector" aria-controls="inspector" title="Inspector"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg></button><button id="account" class="account-button" aria-label="Local account and status" title="Local account and status">Local</button></div>
+</header>
+<div id="workspace" class="workspace">
+ <aside id="sidebar" class="sidebar" aria-label="Scene library and hierarchy">
+  <div class="pane-heading"><span class="wordmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg>SceneLyr</span><button class="pane-close" data-close="sidebar" aria-label="Close sidebar">×</button></div>
+  <button id="new-scene" class="workspace-row"><span aria-hidden="true">▧</span> Local workspace</button>
+  <section><h2>Recent Scenes</h2><div id="library"><p class="muted">Loading scenes…</p></div></section>
+  <section id="hierarchy-section" hidden><div class="section-heading"><h2>Scene Hierarchy</h2><span id="scene-count" class="count"></span></div><label class="search"><span class="sr-only">Find objects and connections</span><input id="filter" type="search" placeholder="Find in scene"></label><div id="hierarchy"></div></section>
+  <section id="asset-section" hidden><details><summary>Assets <span id="asset-count" class="count"></span></summary><div id="assets"></div></details><details id="debug-details"><summary>Detection Stages</summary><div id="debug-assets"></div></details></section>
+  <div class="sidebar-note"><span class="local-dot" aria-hidden="true"></span> Local processing <p>Your source stays on this computer.</p></div>
+ </aside>
+ <div class="resizer" id="sidebar-resizer" role="separator" tabindex="0" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin="200" aria-valuemax="380" aria-valuenow="240"></div>
+ <main id="main" class="main">
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+  <section id="empty" class="empty">
+   <div class="diagram-mark" aria-hidden="true"><svg viewBox="0 0 184 100"><rect x="4" y="27" width="54" height="42" rx="8"/><path d="M60 48h28m-7-6 7 6-7 6"/><rect x="92" y="9" width="82" height="78" rx="12"/><path d="M108 31h37m-37 12h48m-48 12h29m-29 12h40"/></svg></div>
+   <span class="eyebrow">FROM IMAGE TO UNDERSTANDING</span><h1>A clearer picture.<br>One object at a time.</h1><p>Bring a diagram. Recover its structure,<br>inspect the evidence, and make it your own.</p>
+   <div id="drop" class="drop"><button id="choose-image" class="primary">Choose an Image <span aria-hidden="true">↗</span></button><p>Drop a PNG, JPG, WebP or BMP here</p><span class="muted">or paste an image · up to 25 MB</span></div>
+   <p class="empty-footnote">No account needed. Reviewable results, editable exports.</p>
+  </section>
+  <section id="import-progress" class="import-progress" aria-label="Import progress" hidden><div class="source-preview"><img id="upload-preview" alt="Image being imported"></div><div><h2 id="import-title">Reading your diagram</h2><p id="partial-summary" class="muted">The source is ready. Waiting for local analysis.</p><ol id="stages"></ol><button id="retry-import" hidden>Retry Import</button></div></section>
+  <section id="canvas-section" class="canvas-section" aria-label="Diagram workspace" hidden>
+   <div class="canvas-heading"><div><span class="eyebrow">SEMANTIC CANVAS</span><p id="canvas-summary"></p></div><button id="review-toggle" aria-pressed="false">Review Overlay</button></div>
+   <div id="canvas" class="canvas" tabindex="0" aria-label="Diagram canvas. Use Tab to select an object or connection."></div>
+   <div class="canvas-controls" aria-label="Canvas controls"><button id="zoom-out" aria-label="Zoom out">−</button><output id="zoom-level">100%</output><button id="zoom-in" aria-label="Zoom in">+</button><button id="fit-canvas">Fit</button></div>
+  </section>
+  <section class="conversation" aria-label="Scene conversation"><details id="conversation-details"><summary>Conversation <span id="conversation-count" class="count">0</span></summary><div id="timeline" role="log" aria-label="Conversation timeline" aria-live="polite"></div></details><div id="pending-preview" hidden></div><form id="composer"><label for="command" class="sr-only">Describe a semantic edit</label><textarea id="command" rows="1" placeholder="Ask Codex to improve this diagram…" maxlength="2000"></textarea><div class="composer-bottom"><button type="button" id="attach" aria-label="Attach an image" title="Attach an image">＋</button><button type="button" id="voice" aria-label="Start speech input" title="Speak to Codex">●</button><span id="composer-mode">Codex · checking model · SceneLyr MCP</span><button type="submit" id="send" class="primary" aria-label="Send to Codex" title="Send to Codex">↑</button></div></form><div class="composer-help"><button id="command-help">Command Guide</button><span id="save-status">Ready when you are</span></div></section>
+ </main>
+ <div class="resizer" id="inspector-resizer" role="separator" tabindex="0" aria-label="Resize inspector" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="440" aria-valuenow="300"></div>
+ <aside id="inspector" class="inspector" aria-label="Selection inspector"><div class="pane-heading"><strong>Inspector</strong><button class="pane-close" data-close="inspector" aria-label="Close inspector">×</button></div><div id="inspector-content"><div class="inspector-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8m-8 4h5m-5 4h8"/></svg><h2>The evidence behind<br>every object.</h2><p>Select an object or connection to inspect its source, detection details, and semantic properties.</p></div><div class="inspector-tip"><strong>Made for review</strong><p>Uncertain results stay visible. Withheld connections are never silently invented.</p></div></div></aside>
+</div>
+<input id="file" class="sr-only" tabindex="-1" type="file" accept="image/png,image/jpeg,image/webp,image/bmp">
+<dialog id="sheet" aria-labelledby="sheet-title"><div class="pane-heading"><strong id="sheet-title">Details</strong><button id="close-sheet" aria-label="Close dialog">×</button></div><div id="sheet-content"></div></dialog>
+<dialog id="info-dialog" aria-labelledby="info-title"><div class="pane-heading"><h2 id="info-title">Local Workspace</h2><button id="close-info" aria-label="Close information">×</button></div><div id="info-content"></div></dialog>
+</body></html>

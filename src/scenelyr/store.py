@@ -52,3 +52,12 @@ class SceneStore:
         self._scenes[scene_id] = self._future[scene_id].pop()
         return self.get(scene_id)
 
+
+    def history(self, scene_id: str) -> dict[str, bool]:
+        return {"canUndo": bool(self._past.get(scene_id)), "canRedo": bool(self._future.get(scene_id))}
+
+    def replace(self, scene: SemanticScene) -> SemanticScene:
+        """Synchronize an externally changed scene and discard incompatible history."""
+        self._scenes[scene.id] = scene.model_copy(deep=True)
+        self._past[scene.id], self._future[scene.id] = [], []
+        return self.get(scene.id)

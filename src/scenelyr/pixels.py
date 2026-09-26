@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from .models import SemanticScene
+from .progress import report
 from .ocr import available as ocr_available, read_text
 from .arrow_detector import attach_branch_labels, build_detection_profile, detect_aligned_arrows
 from .image_masks import build_semantic_masks
@@ -84,6 +85,7 @@ def _decode(path: str | Path) -> tuple[bytes, np.ndarray]:
 
 def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bool = True,
                    arrow_overrides: dict | None = None) -> SemanticScene:
+    report("objects", "running")
     raw, image = _decode(path)
     height, width = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -151,6 +153,8 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         cv2.rectangle(residual, (max(0, x - 5), max(0, y - 5)),
                       (min(width - 1, x + w + 5), min(height - 1, y + h + 5)), 0, -1)
 
+    report("objects", "complete", objects=len(nodes), nodes=nodes)
+    report("text", "running")
     ocr_items, ocr_error = [], None
     if use_ocr and ocr_available():
         try:
@@ -172,13 +176,18 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as error:
             ocr_error = str(error)
 
+    report("text", "complete" if use_ocr and ocr_available() and not ocr_error else "unavailable",
+           observations=len(ocr_items), nodes=nodes)
+    report("routes", "running")
     arrow_profile = build_detection_profile(gray, boxes, arrow_overrides)
     text_bounds = [item["bounds"] for item in ocr_items if len(item.get("bounds", [])) == 4]
     semantic_masks, mask_profile = build_semantic_masks(
         gray, boxes, text_bounds, brightness_cutoff=arrow_profile["settings"]["brightnessCutoff"])
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(residual, 8)
+    report("junctions", "running")
     junction_edges, junction_profile = detect_junctions(
         gray, semantic_masks["connectorMask"], boxes, [node["id"] for node in nodes])
+    report("junctions", "complete", withheld=len(junction_profile["withheld"]))
     edges = []
     for junction in junction_edges:
         junction["id"] = f"connection-{len(edges) + 1}"
@@ -241,7 +250,10 @@ def extract_pixels(path: str | Path, *, scene_id: str | None = None, use_ocr: bo
         )
     if unknown_directions:
         warnings.append(f"Arrow direction could not be inferred for {unknown_directions} connection(s).")
+    report("routes", "complete", connections=len(edges))
+    report("arrowheads", "running")
     arrowhead_profile = classify_arrowheads(gray, semantic_masks["connectorMask"], edges, boxes)
+    report("arrowheads", "complete")
     attach_branch_labels(edges, ocr_items)
     if not nodes:
         warnings.append("No supported enclosed objects detected; image is not decomposed.")

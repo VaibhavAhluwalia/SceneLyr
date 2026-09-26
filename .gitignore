@@ -13,3 +13,7 @@ __pycache__/
 *.egg-info/
 .venv/
 data/
+
+!src/scenelyr/web/*.html
+.lavish/
+._*

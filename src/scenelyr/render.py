@@ -28,7 +28,7 @@ def _route(points: tuple[Point, ...]) -> str:
 
 
 def render_svg(layout: LayoutScene, scene: SemanticScene) -> str:
-    title = _esc(scene.intent.title if scene.intent and scene.intent.title else scene.id)
+    title = _esc(scene.intent.title if scene.intent and scene.intent.title else scene.metadata.get("originalFilename", scene.id))
     purpose = _esc(scene.intent.purpose) if scene.intent and scene.intent.purpose else ""
     semantic = {node.id: node for node in scene.nodes}
     edges = []
@@ -89,7 +89,7 @@ def write_pptx(layout: LayoutScene, scene: SemanticScene, output: str | Path) ->
     background = slide.background.fill
     background.solid(); background.fore_color.rgb = _rgb("F8FAFC")
     title = slide.shapes.add_textbox(Inches(.55), Inches(.18), Inches(12.2), Inches(.4))
-    title.text_frame.paragraphs[0].text = scene.intent.title if scene.intent and scene.intent.title else scene.id
+    title.text_frame.paragraphs[0].text = scene.intent.title if scene.intent and scene.intent.title else scene.metadata.get("originalFilename", scene.id)
     title.text_frame.paragraphs[0].font.size = Pt(20); title.text_frame.paragraphs[0].font.bold = True
     scale = min(12.333 / max(layout.width, 1), 6.3 / max(layout.height, 1))
     xoff, yoff = (13.333 - layout.width * scale) / 2, .85

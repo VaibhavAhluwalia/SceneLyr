@@ -10,8 +10,9 @@ from mcp.server.fastmcp import FastMCP
 
 from .assets import search_assets
 from .compiler import compile_scene
-from .core import add_edge, add_node, create_scene, remove_node, update_node
+from .core import add_edge, add_node, create_scene, remove_node, remove_edge, update_node
 from .models import SemanticScene
+from .progress import report
 from .pixels import extract_pixels
 from .release_validation import run_release_validation as execute_release_validation
 from .storage import list_imports, load_import, persist_import, save_scene
@@ -38,9 +39,11 @@ def _get(scene_id: str) -> SemanticScene:
 
 def _mutate(scene_id: str, update) -> SemanticScene:
     _get(scene_id)
-    scene = store.mutate(scene_id, update)
-    save_scene(scene)
-    return scene
+    def persist(current):
+        updated = update(current)
+        save_scene(updated)
+        return updated
+    return store.mutate(scene_id, persist)
 
 
 @mcp.tool()
@@ -109,11 +112,13 @@ def import_pixels(path: str, scene_id: str | None = None) -> str:
     """Deterministically recover supported diagram objects from an image; no model or network."""
     source = Path(path)
     scene = extract_pixels(source, scene_id=scene_id)
+    report("saved", "running")
     persist_import(scene, source.read_bytes(), source.name)
+    report("saved", "complete")
     try:
         store.create(scene)
     except ValueError:
-        pass
+        scene = store.mutate(scene.id, lambda _: scene)
     return _json(scene)
 
 
@@ -244,6 +249,12 @@ def reconnect_arrow(scene_id: str, edge_id: str, from_object: str, to_object: st
         edge.setdefault("metadata", {})["direction"] = "agent-edited"
         return SemanticScene.model_validate(data)
     return _json(_mutate(scene_id, reconnect))
+
+
+@mcp.tool()
+def remove_relationship_tool(scene_id: str, edge_id: str) -> str:
+    """Remove a relationship, preserving both objects."""
+    return _json(_mutate(scene_id, lambda scene: remove_edge(scene, edge_id)))
 
 
 def main() -> None:
