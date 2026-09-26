@@ -21,3 +21,14 @@ def test_compile_writes_svg_html_and_editable_pptx(tmp_path):
     result = compile_scene(example_scene(), svg_path=svg, html_path=html, pptx_path=pptx)
     assert "<svg" in result.svg and "SceneLyr inspector" in result.html
     assert svg.stat().st_size > 1000 and html.stat().st_size > 1000 and pptx.stat().st_size > 10_000
+
+
+def test_semantic_addition_matches_imported_diagram_style():
+    scene = SemanticScene.model_validate({
+        "id": "imported", "metadata": {"sourceImage": "/tmp/source.png"},
+        "nodes": [{"id": "added", "label": "Partner picks up", "kind": "service"}],
+    })
+    svg = compile_scene(scene).svg
+    assert 'data-scene-id="added"' in svg
+    assert 'rx="4"' in svg
+    assert ">EXT<" not in svg
