@@ -27,6 +27,16 @@ def _route(points: tuple[Point, ...]) -> str:
     return "M " + " L ".join(f"{point.x:g} {point.y:g}" for point in points)
 
 
+def _shape_kind(scene: SemanticScene, node) -> str | None:
+    """Keep semantic additions visually consistent with an imported diagram."""
+    detected = node.metadata.get("shape")
+    if detected:
+        return detected
+    if scene.metadata.get("sourceImage"):
+        return "rectangle"
+    return None
+
+
 def render_svg(layout: LayoutScene, scene: SemanticScene) -> str:
     title = _esc(scene.intent.title if scene.intent and scene.intent.title else scene.metadata.get("originalFilename", scene.id))
     purpose = _esc(scene.intent.purpose) if scene.intent and scene.intent.purpose else ""
@@ -44,7 +54,7 @@ def render_svg(layout: LayoutScene, scene: SemanticScene) -> str:
         original = semantic[node.id]
         fill, stroke, accent = PALETTE.get(node.kind, PALETTE["service"])
         strong = original.importance == "primary" or (original.style and original.style.emphasis == "strong")
-        shape_kind = original.metadata.get("shape")
+        shape_kind = _shape_kind(scene, original)
         if shape_kind in {"ellipse", "diamond", "rectangle"}:
             cx, cy = node.x + node.width / 2, node.y + node.height / 2
             attrs = 'fill="#ffffff" stroke="#64748b" stroke-width="2"'
@@ -114,7 +124,7 @@ def write_pptx(layout: LayoutScene, scene: SemanticScene, output: str | Path) ->
         original = by_id[node.id]
         fill, stroke, accent = [value.lstrip("#") for value in PALETTE.get(node.kind, PALETTE["service"])]
         x, y, w, h = xoff + node.x * scale, yoff + node.y * scale, node.width * scale, node.height * scale
-        shape_type = {"ellipse": MSO_SHAPE.OVAL, "diamond": MSO_SHAPE.DIAMOND, "rectangle": MSO_SHAPE.RECTANGLE}.get(original.metadata.get("shape"), MSO_SHAPE.ROUNDED_RECTANGLE)
+        shape_type = {"ellipse": MSO_SHAPE.OVAL, "diamond": MSO_SHAPE.DIAMOND, "rectangle": MSO_SHAPE.RECTANGLE}.get(_shape_kind(scene, original), MSO_SHAPE.ROUNDED_RECTANGLE)
         shape = slide.shapes.add_shape(shape_type, Inches(x), Inches(y), Inches(w), Inches(h))
         shape.fill.solid(); shape.fill.fore_color.rgb = _rgb(fill); shape.line.color.rgb = _rgb(stroke)
         shape.text_frame.clear(); shape.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
