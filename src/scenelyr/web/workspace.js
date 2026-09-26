@@ -17,13 +17,32 @@ async function api(url, options={}) {
 }
 const post = (url, data={}) => api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
 function notice(message, error=false) { $('notice').textContent=message; $('notice').classList.toggle('error',error); $('notice').hidden=!message; }
-function log(message, kind='tool', tool='SceneLyr') {
- const row=document.createElement('div'); row.className='message '+kind;
- const label=document.createElement('small'); label.textContent=kind==='user'?'You':tool;
- row.append(label,document.createTextNode(message)); $('timeline').append(row);
- while ($('timeline').children.length>80) $('timeline').firstChild.remove();
- $('conversation-count').textContent=$('timeline').children.length;
- $('conversation-details').open=true; $('timeline').scrollTop=$('timeline').scrollHeight;
+function clearChatEmpty(){const empty=$('chat-empty');if(empty)empty.remove();}
+function updateMessageCount(){const count=$('timeline').querySelectorAll('.chat-message').length;$('conversation-count').textContent=count+' message'+(count===1?'':'s');}
+function log(message, kind='assistant', tool='Codex') {
+ clearChatEmpty();const role=kind==='user'?'user':kind==='error'?'error':'assistant';
+ const row=document.createElement('article');row.className='chat-message '+role;
+ const avatar=document.createElement('span');avatar.className='chat-avatar';avatar.setAttribute('aria-hidden','true');avatar.textContent=role==='user'?'Y':'◇';
+ const content=document.createElement('div');content.className='chat-content';
+ const meta=document.createElement('div');meta.className='chat-meta';
+ const name=document.createElement('strong');name.textContent=role==='user'?'You':tool;
+ const time=document.createElement('span');time.textContent='Now';meta.append(name,time);
+ const copy=document.createElement('div');copy.className='chat-copy';copy.textContent=message;
+ content.append(meta,copy);row.append(avatar,content);$('timeline').append(row);
+ while($('timeline').children.length>80)$('timeline').firstChild.remove();
+ updateMessageCount();$('timeline').scrollTop=$('timeline').scrollHeight;return row;
+}
+function beginActivity(){
+ clearChatEmpty();const details=document.createElement('details');details.className='activity-card';details.open=true;
+ const summary=document.createElement('summary');summary.textContent='Codex is working';
+ const list=document.createElement('ol');details.append(summary,list);$('timeline').append(details);$('timeline').scrollTop=$('timeline').scrollHeight;
+ return {details,summary,list,count:0};
+}
+function addActivity(panel,activity){
+ const item=document.createElement('li');item.dataset.state=activity.state;
+ const icon=document.createElement('span');icon.className='activity-icon';icon.textContent=activity.state==='complete'?'✓':activity.state==='failed'?'!':'…';
+ const copy=document.createElement('span');const name=activity.tool?'SceneLyr MCP · '+activity.tool:'Codex';copy.textContent=name+' — '+activity.message;
+ item.append(icon,copy);panel.list.append(item);panel.count++;panel.summary.textContent='Codex is working · '+panel.count+' step'+(panel.count===1?'':'s');$('timeline').scrollTop=$('timeline').scrollHeight;
 }
 function error(error) { notice(error.message || String(error),true); log(error.message || String(error),'error'); }
 function busy(value) { state.busy=value; $('send').disabled=value; $('undo').disabled=value || !state.scene?.history.canUndo; $('redo').disabled=value || !state.scene?.history.canRedo; }
@@ -184,26 +203,24 @@ async function sendCommand(message) {
    log(response.summary,'tool','Preview · '+response.tool);$('apply-preview').focus();
   } else if(response.type==='download') {
    log(response.summary);const a=document.createElement('a');a.href=response.url;a.download='';a.textContent='Download '+message.split(' ').pop().toUpperCase();$('timeline').lastElementChild.append(document.createElement('br'),a);a.click();
-  } else if(response.type==='job'&&response.kind==='agent') {log(response.summary,'tool','Codex');await pollAgent(response.job,id);}
+  } else if(response.type==='job'&&response.kind==='agent') {await pollAgent(response.job,id);}
   else if(response.type==='job') {log(response.summary);pollValidation(response.job);}
   else if(response.type==='agent') {if(response.scene)renderScene(response.scene);log(response.message,'tool',response.tools?.length?'Codex · '+response.tools.join(', '):'Codex');notice('Codex completed the request.');}
   else {if(response.scene)renderScene(response.scene);log(response.summary,'tool',response.tool);}
  }catch(e){error(e);}finally{clearTimeout(progress);busy(false);}
 }
 async function pollAgent(id,sceneId) {
- let shown=0;
+ let shown=0;const panel=beginActivity();
  while(true){
   const job=await api('/workspace/jobs/'+encodeURIComponent(id));
-  for(const activity of job.events.slice(shown)){
-   const label=activity.tool?'MCP · '+activity.tool:'Codex activity';
-   log((activity.state==='complete'?'✓ ':activity.state==='failed'?'! ':'… ')+activity.message,'tool',label);
-  }
+  for(const activity of job.events.slice(shown))addActivity(panel,activity);
   shown=job.events.length;
-  if(job.state==='failed')throw new Error(job.error);
+  if(job.state==='failed'){panel.summary.textContent='Work stopped · '+panel.count+' steps';panel.details.open=true;throw new Error(job.error);}
   if(job.state==='complete'){
    const result=job.result;if(state.scene?.id!==sceneId)return;
    if(result.scene)renderScene(result.scene);
-   log(result.message,'tool',result.tools?.length?'Codex · '+result.tools.join(', '):'Codex');
+   panel.summary.textContent='Work completed · '+panel.count+' step'+(panel.count===1?'':'s');panel.details.open=false;
+   log(result.message,'assistant',result.tools?.length?'Codex · '+result.tools.join(', '):'Codex');
    notice('Codex completed the request.');return;
   }
   await sleep(350);
@@ -295,8 +312,10 @@ $('canvas').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){cons
 $('inspector-content').addEventListener('click',e=>{const button=e.target.closest('button');if(!button)return;if(button.dataset.imageSrc){openImageViewer(button.dataset.imageSrc,button.dataset.imageAlt);return;}let command=button.dataset.command;if(button.id==='rename-node')command='rename '+quote(state.selected)+' to '+quote($('node-label').value);if(button.id==='reconnect-edge')command='reconnect '+quote(state.selected)+' from '+quote($('edge-from').value)+' to '+quote($('edge-to').value);if(command){if(sheetPane)closeSheet();sendCommand(command);}});
 $('filter').addEventListener('input',renderHierarchy);$('debug-details').addEventListener('toggle',()=>{if($('debug-details').open)loadDebug();});
 $('pending-preview').addEventListener('click',e=>{if(e.target.id==='apply-preview')applyPreview();if(e.target.id==='discard-preview'){log('Preview cancelled. No scene change.');clearPreview();$('command').focus();}});
-$('composer').addEventListener('submit',e=>{e.preventDefault();const value=$('command').value.trim();if(value){$('command').value='';sendCommand(value);}});
+$('composer').addEventListener('submit',e=>{e.preventDefault();const value=$('command').value.trim();if(value){$('command').value='';resizeCommand();sendCommand(value);}});
 $('command').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('composer').requestSubmit();}});
+$('command').addEventListener('input',resizeCommand);
+$('timeline').addEventListener('click',e=>{const suggestion=e.target.closest('[data-prompt]');if(suggestion){$('command').value=suggestion.dataset.prompt;resizeCommand();$('command').focus();}});
 $('model-select').addEventListener('change',()=>updateEffortChoices());$('effort-select').addEventListener('change',()=>remember('reasoningEffort',$('effort-select').value));
 for(const id of ['choose-image','import-button','attach'])$(id).addEventListener('click',()=>$('file').click());
 $('file').addEventListener('change',()=>{const file=$('file').files[0];$('file').value='';importFile(file);});
@@ -318,5 +337,6 @@ $('account').addEventListener('click',async()=>{try{const account=await api('/wo
 $('command-help').addEventListener('click',()=>info('SceneLyr Commands','<p>Write a natural-language request for Codex, or use an exact local command for a faster deterministic edit. Codex receives the open scene and can call the configured SceneLyr MCP tools.</p><pre>Make this flow horizontal and give the steps realistic names\nrename selected to “Customer”\nadd “Cache”\nconnect “Customer” to “Cache”\nredetect\ninspect\nrender\nexport svg\nundo / redo\nvalidate</pre><p>Keyboard: Tab to move, Enter to select, arrow keys in the hierarchy or on pane dividers. ⌘/Ctrl Z previews undo; Shift adds redo. Escape closes sheets.</p>'));
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();if(state.scene)sendCommand(e.shiftKey?'redo':'undo');}});
 window.addEventListener('resize',()=>{if(sheetPane)closeSheet();updatePaneButtons();zoom();});
-resizePane('sidebar',200,380,240);resizePane('inspector',260,440,300);updatePaneButtons();setupSpeech();
+function resizeCommand(){const input=$('command');input.style.height='auto';input.style.height=Math.min(150,input.scrollHeight)+'px';}
+resizePane('sidebar',200,380,240);resizePane('inspector',260,440,300);updatePaneButtons();setupSpeech();resizeCommand();
 (async()=>{try{await Promise.all([loadLibrary(),loadAccountStatus(),loadModels()]);const job=recall('importJob');if(job){state.importing=true;$('empty').hidden=true;$('import-progress').hidden=false;$('upload-preview').hidden=true;try{await pollImport(job);}catch(e){remember('importJob','');importFailed(e);}finally{state.importing=false;$('upload-preview').hidden=false;}}else{const requested=new URLSearchParams(location.search).get('scene')||recall('scene');if(requested)await openScene(requested);}}catch(e){error(e);}})();
