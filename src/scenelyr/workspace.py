@@ -20,7 +20,7 @@ from . import mcp_server as engine
 from .auth import auth
 from .commands import HELP, MUTATIONS, execute, parse, revision
 from .compiler import compile_scene
-from .codex_bridge import run_codex
+from .codex_bridge import list_codex_models, run_codex
 from .models import SemanticScene
 from .progress import observer
 from .storage import data_root, list_imports, load_import
@@ -83,6 +83,22 @@ def fail(error: Exception) -> HTTPException:
 @router.get('/account')
 def account():
     return auth.account()
+
+
+@router.get('/models')
+def models():
+    try:
+        items = list_codex_models()
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
+    return {'models': [{
+        'id': item.get('model') or item.get('id'),
+        'name': item.get('displayName') or item.get('model') or item.get('id'),
+        'defaultEffort': item.get('defaultReasoningEffort'),
+        'efforts': [value.get('reasoningEffort') for value in item.get('supportedReasoningEfforts', [])
+                    if value.get('reasoningEffort')],
+        'isDefault': bool(item.get('isDefault')),
+    } for item in items if item.get('model') or item.get('id')]}
 
 
 @router.post('/account/login')
@@ -212,6 +228,8 @@ def job_status(job_id: str):
 class CommandRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     selected: str | None = None
+    model: str | None = Field(default=None, max_length=100, pattern=r'^[A-Za-z0-9._-]+$')
+    effort: str | None = Field(default=None, max_length=30, pattern=r'^[A-Za-z0-9_-]+$')
 
 
 @router.post('/scenes/{scene_id}/agent')
@@ -222,13 +240,14 @@ def agent_command(scene_id: str, request: CommandRequest):
         get_scene(scene_id)
     key, job = new_job('agent')
     event(job, {'stage': 'queued', 'state': 'complete', 'message': 'Request queued for Codex.'})
-    pool.submit(agent_job, job, scene_id, request.message, request.selected)
+    pool.submit(agent_job, job, scene_id, request.message, request.selected, request.model, request.effort)
     return {'type': 'job', 'kind': 'agent', 'job': key, 'summary': 'Codex request started.'}
 
 
-def agent_job(job: dict, scene_id: str, message: str, selected: str | None):
+def agent_job(job: dict, scene_id: str, message: str, selected: str | None,
+              model: str | None, effort: str | None):
     try:
-        result = run_codex(scene_id, message, selected, lambda value: event(job, value))
+        result = run_codex(scene_id, message, selected, lambda value: event(job, value), model, effort)
         with lock:
             updated = payload(get_scene(scene_id))
         with job_lock:

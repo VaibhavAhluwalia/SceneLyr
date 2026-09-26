@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], openGeneration:0};
+const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], models:[], openGeneration:0};
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const quote = value => '"' + String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"';
 const sceneURL = id => '/workspace/scenes/' + encodeURIComponent(id);
@@ -38,11 +38,28 @@ async function loadAccountStatus() {
   $('account').textContent=account.mode==='codex'?(modelName.replace(/^GPT-6 /,'')+(effort?' · '+titleCase(effort):'')):'Local';
   $('account').setAttribute('aria-label',account.label+(modelName?' using '+modelName:''));
   $('account').title=[account.label,modelName,effort&&titleCase(effort)+' reasoning'].filter(Boolean).join(' · ');
-  $('composer-mode').textContent=account.mode==='codex'?['Codex',modelName,effort&&titleCase(effort),'SceneLyr MCP'].filter(Boolean).join(' · '):'Local commands · SceneLyr';
+  $('composer-mode').textContent=account.mode==='codex'?'SceneLyr MCP':'Local commands';
  } catch {}
 }
 const titleCase=value=>String(value||'').replace(/(^|[-_ ])(\w)/g,(_,space,letter)=>(space?' ':'')+letter.toUpperCase());
 const formatModel=value=>value?String(value).split('-').map((part,index)=>index===0?'GPT':index===1&&/^\d/.test(part)?part.toUpperCase():titleCase(part)).join('-').replace(/^GPT-(\d[^-]*)-/,'GPT-$1 '):'';
+function updateEffortChoices(preferred) {
+ const model=state.models.find(item=>item.id===$('model-select').value);const efforts=model?.efforts||[];
+ $('effort-select').innerHTML=efforts.map(value=>`<option value="${escape(value)}">${escape(titleCase(value))}</option>`).join('')||'<option value="">Default</option>';
+ const saved=preferred||recall('reasoningEffort');$('effort-select').value=efforts.includes(saved)?saved:(model?.defaultEffort||efforts[0]||'');$('effort-select').disabled=!efforts.length;
+ remember('model',$('model-select').value);remember('reasoningEffort',$('effort-select').value);
+}
+async function loadModels() {
+ try {
+  const data=await api('/workspace/models');state.models=data.models||[];
+  $('model-select').innerHTML=state.models.map(item=>`<option value="${escape(item.id)}">${escape(item.name)}</option>`).join('')||'<option value="">Codex default</option>';
+  const saved=recall('model');const chosen=state.models.find(item=>item.id===saved)||state.models.find(item=>item.isDefault)||state.models[0];
+  $('model-select').value=chosen?.id||'';updateEffortChoices();
+ } catch {
+  $('model-select').innerHTML='<option value="">Codex default</option>';$('model-select').disabled=true;$('effort-select').disabled=true;
+ }
+}
+const agentSettings=()=>({model:$('model-select').value||null,effort:$('effort-select').value||null});
 function setupSpeech() {
  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;const button=$('voice');
  if(!SpeechRecognition){button.disabled=true;button.title='Speech input is unavailable in this browser';return;}
@@ -154,11 +171,11 @@ async function sendCommand(message) {
  try {
   const id=state.scene.id;let response;
   try {
-   response=await post(sceneURL(id)+'/commands',{message:message.replace(/[“”]/g,'"'),selected:state.selected});
+   response=await post(sceneURL(id)+'/commands',{message:message.replace(/[“”]/g,'"'),selected:state.selected,...agentSettings()});
   } catch(localError) {
    if(!String(localError.message).startsWith('This local command was not recognized.'))throw localError;
    notice('Codex is interpreting your request and may call SceneLyr tools…');
-   response=await post(sceneURL(id)+'/agent',{message,selected:state.selected});
+   response=await post(sceneURL(id)+'/agent',{message,selected:state.selected,...agentSettings()});
   }
   if(state.scene?.id!==id)return;
   if(response.type==='preview'){
@@ -280,6 +297,7 @@ $('filter').addEventListener('input',renderHierarchy);$('debug-details').addEven
 $('pending-preview').addEventListener('click',e=>{if(e.target.id==='apply-preview')applyPreview();if(e.target.id==='discard-preview'){log('Preview cancelled. No scene change.');clearPreview();$('command').focus();}});
 $('composer').addEventListener('submit',e=>{e.preventDefault();const value=$('command').value.trim();if(value){$('command').value='';sendCommand(value);}});
 $('command').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('composer').requestSubmit();}});
+$('model-select').addEventListener('change',()=>updateEffortChoices());$('effort-select').addEventListener('change',()=>remember('reasoningEffort',$('effort-select').value));
 for(const id of ['choose-image','import-button','attach'])$(id).addEventListener('click',()=>$('file').click());
 $('file').addEventListener('change',()=>{const file=$('file').files[0];$('file').value='';importFile(file);});
 $('retry-import').addEventListener('click',()=>importFile(state.lastFile));
@@ -301,4 +319,4 @@ $('command-help').addEventListener('click',()=>info('SceneLyr Commands','<p>Writ
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();if(state.scene)sendCommand(e.shiftKey?'redo':'undo');}});
 window.addEventListener('resize',()=>{if(sheetPane)closeSheet();updatePaneButtons();zoom();});
 resizePane('sidebar',200,380,240);resizePane('inspector',260,440,300);updatePaneButtons();setupSpeech();
-(async()=>{try{await Promise.all([loadLibrary(),loadAccountStatus()]);const job=recall('importJob');if(job){state.importing=true;$('empty').hidden=true;$('import-progress').hidden=false;$('upload-preview').hidden=true;try{await pollImport(job);}catch(e){remember('importJob','');importFailed(e);}finally{state.importing=false;$('upload-preview').hidden=false;}}else{const requested=new URLSearchParams(location.search).get('scene')||recall('scene');if(requested)await openScene(requested);}}catch(e){error(e);}})();
+(async()=>{try{await Promise.all([loadLibrary(),loadAccountStatus(),loadModels()]);const job=recall('importJob');if(job){state.importing=true;$('empty').hidden=true;$('import-progress').hidden=false;$('upload-preview').hidden=true;try{await pollImport(job);}catch(e){remember('importJob','');importFailed(e);}finally{state.importing=false;$('upload-preview').hidden=false;}}else{const requested=new URLSearchParams(location.search).get('scene')||recall('scene');if(requested)await openScene(requested);}}catch(e){error(e);}})();
