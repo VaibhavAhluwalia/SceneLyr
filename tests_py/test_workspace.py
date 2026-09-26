@@ -87,21 +87,34 @@ def test_expired_preview_and_natural_language_fallback(client, monkeypatch):
 
 def test_natural_language_agent_uses_codex_bridge_and_returns_scene(client, monkeypatch):
     calls = []
-    def codex(scene_id, message, selected, report=None):
-        calls.append((scene_id, message, selected))
+    def codex(scene_id, message, selected, report=None, model=None, effort=None):
+        calls.append((scene_id, message, selected, model, effort))
         if report:
             report({'stage':'tool','state':'complete','tool':'inspect_scene','message':'inspect_scene completed.'})
         return {'message':'Inspected with SceneLyr.', 'tools':['inspect_scene'], 'threadId':'thread-test'}
     monkeypatch.setattr(workspace, 'run_codex', codex)
     response = client.post('/workspace/scenes/workspace-test/agent', json={
-        'message':'Please understand this diagram', 'selected':'a'
+        'message':'Please understand this diagram', 'selected':'a',
+        'model':'gpt-6-astra', 'effort':'high'
     })
     assert response.status_code == 200
     job = wait_job(client, response.json()['job'])
     result = job['result']
     assert result['type'] == 'agent' and result['tools'] == ['inspect_scene']
     assert result['scene']['id'] == 'workspace-test'
-    assert calls == [('workspace-test', 'Please understand this diagram', 'a')]
+    assert calls == [('workspace-test', 'Please understand this diagram', 'a', 'gpt-6-astra', 'high')]
+
+
+def test_model_picker_uses_app_server_catalog(client, monkeypatch):
+    monkeypatch.setattr(workspace, 'list_codex_models', lambda: [{
+        'id':'gpt-6-astra', 'model':'gpt-6-astra', 'displayName':'GPT-6 Astra',
+        'defaultReasoningEffort':'low', 'isDefault':True,
+        'supportedReasoningEfforts':[{'reasoningEffort':'low'}, {'reasoningEffort':'high'}],
+    }])
+    result=client.get('/workspace/models')
+    assert result.status_code==200
+    assert result.json()=={'models':[{'id':'gpt-6-astra','name':'GPT-6 Astra',
+        'defaultEffort':'low','efforts':['low','high'],'isDefault':True}]}
 
 
 def test_semantic_commands_use_registered_mcp_tools(client, monkeypatch):
