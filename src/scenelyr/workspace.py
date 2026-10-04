@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote, urlsplit
@@ -33,6 +34,7 @@ jobs: dict[str, dict] = {}
 previews: dict[str, dict] = {}
 STAGES = ['upload', 'objects', 'text', 'routes', 'arrowheads', 'junctions', 'saved']
 MAX_UPLOAD = 25 * 1024 * 1024
+MAX_CHAT_ENTRIES = 100
 
 
 def safe_id(scene_id: str) -> str:
@@ -55,6 +57,31 @@ def get_scene(scene_id: str) -> SemanticScene:
     if current is None:
         raise HTTPException(404, 'Scene not found. Choose another scene or import an image.')
     return current
+
+
+def chat_path(scene_id: str) -> Path:
+    safe_id(scene_id)
+    return data_root() / 'imports' / scene_id / 'chat.json'
+
+
+def load_chat(scene_id: str) -> list[dict]:
+    get_scene(scene_id)
+    target = chat_path(scene_id)
+    if not target.is_file():
+        return []
+    try:
+        value = json.loads(target.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return value if isinstance(value, list) else []
+
+
+def save_chat(scene_id: str, entries: list[dict]):
+    target = chat_path(scene_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp')
+    temporary.write_text(json.dumps(entries[-MAX_CHAT_ENTRIES:], indent=2), encoding='utf-8')
+    temporary.replace(target)
 
 
 def payload(scene: SemanticScene) -> dict:
@@ -230,6 +257,36 @@ class CommandRequest(BaseModel):
     selected: str | None = None
     model: str | None = Field(default=None, max_length=100, pattern=r'^[A-Za-z0-9._-]+$')
     effort: str | None = Field(default=None, max_length=30, pattern=r'^[A-Za-z0-9_-]+$')
+
+
+class ChatActivity(BaseModel):
+    state: str = Field(pattern=r'^(running|complete|failed)$')
+    tool: str | None = Field(default=None, max_length=200)
+    message: str = Field(max_length=2000)
+
+
+class ChatEntry(BaseModel):
+    role: str = Field(pattern=r'^(user|assistant|error|activity)$')
+    content: str = Field(default='', max_length=12000)
+    label: str | None = Field(default=None, max_length=300)
+    events: list[ChatActivity] = Field(default_factory=list, max_length=80)
+
+
+@router.get('/scenes/{scene_id}/chat')
+def chat(scene_id: str):
+    with lock:
+        return {'entries': load_chat(scene_id)}
+
+
+@router.post('/scenes/{scene_id}/chat')
+def append_chat(scene_id: str, entry: ChatEntry):
+    with lock:
+        entries = load_chat(scene_id)
+        value = entry.model_dump(exclude_none=True)
+        value['createdAt'] = datetime.now(UTC).isoformat()
+        entries.append(value)
+        save_chat(scene_id, entries)
+        return {'saved': True, 'count': min(len(entries), MAX_CHAT_ENTRIES)}
 
 
 @router.post('/scenes/{scene_id}/agent')

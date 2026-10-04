@@ -105,6 +105,31 @@ def test_natural_language_agent_uses_codex_bridge_and_returns_scene(client, monk
     assert calls == [('workspace-test', 'Please understand this diagram', 'a', 'gpt-6-astra', 'high')]
 
 
+def test_scene_chat_is_saved_restored_and_bounded(client):
+    user = client.post('/workspace/scenes/workspace-test/chat', json={
+        'role': 'user', 'content': 'Inspect this diagram.', 'label': 'You'
+    })
+    assert user.status_code == 200 and user.json()['count'] == 1
+    activity = client.post('/workspace/scenes/workspace-test/chat', json={
+        'role': 'activity', 'content': 'Work completed · 1 step', 'label': 'Codex activity',
+        'events': [{'state': 'complete', 'tool': 'inspect_scene', 'message': 'Inspection completed.'}],
+    })
+    assert activity.status_code == 200
+    restored = client.get('/workspace/scenes/workspace-test/chat').json()['entries']
+    assert [entry['role'] for entry in restored] == ['user', 'activity']
+    assert restored[1]['events'][0]['tool'] == 'inspect_scene'
+    assert restored[0]['createdAt'].endswith('+00:00')
+
+    for index in range(workspace.MAX_CHAT_ENTRIES + 2):
+        response = client.post('/workspace/scenes/workspace-test/chat', json={
+            'role': 'assistant', 'content': f'Answer {index}'
+        })
+        assert response.status_code == 200
+    bounded = client.get('/workspace/scenes/workspace-test/chat').json()['entries']
+    assert len(bounded) == workspace.MAX_CHAT_ENTRIES
+    assert bounded[-1]['content'] == f'Answer {workspace.MAX_CHAT_ENTRIES + 1}'
+
+
 def test_model_picker_uses_app_server_catalog(client, monkeypatch):
     monkeypatch.setattr(workspace, 'list_codex_models', lambda: [{
         'id':'gpt-6-astra', 'model':'gpt-6-astra', 'displayName':'GPT-6 Astra',

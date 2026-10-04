@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], models:[], openGeneration:0};
+const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], models:[], openGeneration:0, chatSave:Promise.resolve()};
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const quote = value => '"' + String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"';
 const sceneURL = id => '/workspace/scenes/' + encodeURIComponent(id);
@@ -19,7 +19,8 @@ const post = (url, data={}) => api(url,{method:'POST',headers:{'Content-Type':'a
 function notice(message, error=false) { $('notice').textContent=message; $('notice').classList.toggle('error',error); $('notice').hidden=!message; }
 function clearChatEmpty(){const empty=$('chat-empty');if(empty)empty.remove();}
 function updateMessageCount(){const count=$('timeline').querySelectorAll('.chat-message').length;$('conversation-count').textContent=count+' message'+(count===1?'':'s');}
-function log(message, kind='assistant', tool='Codex') {
+function saveChat(entry){if(!state.scene)return;const id=state.scene.id;state.chatSave=state.chatSave.then(()=>post(sceneURL(id)+'/chat',entry)).catch(()=>notice('The message is visible, but its chat history could not be saved.',true));}
+function log(message, kind='assistant', tool='Codex', persist=true) {
  clearChatEmpty();const role=kind==='user'?'user':kind==='error'?'error':'assistant';
  const row=document.createElement('article');row.className='chat-message '+role;
  const avatar=document.createElement('span');avatar.className='chat-avatar';avatar.setAttribute('aria-hidden','true');avatar.textContent=role==='user'?'Y':'◇';
@@ -30,19 +31,30 @@ function log(message, kind='assistant', tool='Codex') {
  const copy=document.createElement('div');copy.className='chat-copy';copy.textContent=message;
  content.append(meta,copy);row.append(avatar,content);$('timeline').append(row);
  while($('timeline').children.length>80)$('timeline').firstChild.remove();
- updateMessageCount();$('timeline').scrollTop=$('timeline').scrollHeight;return row;
+ updateMessageCount();$('timeline').scrollTop=$('timeline').scrollHeight;
+ if(persist)saveChat({role,content:String(message),label:tool});return row;
 }
-function beginActivity(){
+function beginActivity(persist=true){
  clearChatEmpty();const details=document.createElement('details');details.className='activity-card';details.open=true;
  const summary=document.createElement('summary');summary.textContent='Codex is working';
  const list=document.createElement('ol');details.append(summary,list);$('timeline').append(details);$('timeline').scrollTop=$('timeline').scrollHeight;
- return {details,summary,list,count:0};
+ return {details,summary,list,count:0,events:[],persist};
 }
 function addActivity(panel,activity){
  const item=document.createElement('li');item.dataset.state=activity.state;
  const icon=document.createElement('span');icon.className='activity-icon';icon.textContent=activity.state==='complete'?'✓':activity.state==='failed'?'!':'…';
  const copy=document.createElement('span');const name=activity.tool?'SceneLyr MCP · '+activity.tool:'Codex';copy.textContent=name+' — '+activity.message;
- item.append(icon,copy);panel.list.append(item);panel.count++;panel.summary.textContent='Codex is working · '+panel.count+' step'+(panel.count===1?'':'s');$('timeline').scrollTop=$('timeline').scrollHeight;
+ item.append(icon,copy);panel.list.append(item);panel.events.push({state:activity.state,tool:activity.tool||null,message:activity.message});panel.count++;panel.summary.textContent='Codex is working · '+panel.count+' step'+(panel.count===1?'':'s');$('timeline').scrollTop=$('timeline').scrollHeight;
+}
+function finishActivity(panel,failed=false){panel.summary.textContent=(failed?'Work stopped':'Work completed')+' · '+panel.count+' step'+(panel.count===1?'':'s');panel.details.open=failed;if(panel.persist)saveChat({role:'activity',content:panel.summary.textContent,label:'Codex activity',events:panel.events});}
+function resetChat(){
+ $('timeline').innerHTML='<div id="chat-empty" class="chat-empty"><span class="codex-mark large" aria-hidden="true">◇</span><strong>Work on this diagram with Codex</strong><p>Describe the complete result you want. Codex can inspect the scene, call SceneLyr tools, and show every step.</p><div class="prompt-suggestions"><button type="button" data-prompt="Inspect this diagram and explain what needs review.">Inspect this diagram</button><button type="button" data-prompt="Make this flow horizontal and keep the current visual style.">Make the flow horizontal</button><button type="button" data-prompt="Explain the uncertain arrows and fix them where the evidence is clear.">Review uncertain arrows</button></div></div>';
+ updateMessageCount();
+}
+async function loadChat(sceneId){
+ resetChat();const data=await api(sceneURL(sceneId)+'/chat');if(state.scene?.id!==sceneId)return;
+ for(const entry of data.entries||[]){if(entry.role==='activity'){const panel=beginActivity(false);for(const activity of entry.events||[])addActivity(panel,activity);finishActivity(panel,entry.content.startsWith('Work stopped'));}else log(entry.content,entry.role,entry.label||'Codex',false);}
+ $('timeline').scrollTop=$('timeline').scrollHeight;
 }
 function error(error) { notice(error.message || String(error),true); log(error.message || String(error),'error'); }
 function busy(value) { state.busy=value; $('send').disabled=value; $('undo').disabled=value || !state.scene?.history.canUndo; $('redo').disabled=value || !state.scene?.history.canRedo; }
@@ -98,7 +110,7 @@ async function openScene(id) {
  const generation=++state.openGeneration;
  try {
   const scene=await api(sceneURL(id)); if(generation!==state.openGeneration)return;
-  await clearPreview(); state.selected=recall('selection.'+id); renderScene(scene); notice('');
+  await clearPreview(); state.selected=recall('selection.'+id); renderScene(scene); await loadChat(id); notice('');
   history.replaceState(null,'','?scene='+encodeURIComponent(id)); remember('scene',id);
  } catch(e) { if(generation===state.openGeneration)error(e); }
 }
@@ -215,11 +227,11 @@ async function pollAgent(id,sceneId) {
   const job=await api('/workspace/jobs/'+encodeURIComponent(id));
   for(const activity of job.events.slice(shown))addActivity(panel,activity);
   shown=job.events.length;
-  if(job.state==='failed'){panel.summary.textContent='Work stopped · '+panel.count+' steps';panel.details.open=true;throw new Error(job.error);}
+  if(job.state==='failed'){finishActivity(panel,true);throw new Error(job.error);}
   if(job.state==='complete'){
    const result=job.result;if(state.scene?.id!==sceneId)return;
    if(result.scene)renderScene(result.scene);
-   panel.summary.textContent='Work completed · '+panel.count+' step'+(panel.count===1?'':'s');panel.details.open=false;
+   finishActivity(panel);
    log(result.message,'assistant',result.tools?.length?'Codex · '+result.tools.join(', '):'Codex');
    notice('Codex completed the request.');return;
   }
