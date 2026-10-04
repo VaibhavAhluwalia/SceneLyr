@@ -72,7 +72,7 @@ artifacts/order-platform.pptx
 .venv/bin/scenelyr mcp
 ```
 
-The direct Python MCP exposes semantic operations such as `create_scene_tool`, `add_node_tool`, `add_relationship_tool`, `find_asset`, `render_scene`, `export_scene`, `import_pixels`, `undo_scene`, and `redo_scene`. It communicates over stdio and does not require FastAPI or Node.js.
+The direct Python MCP exposes semantic operations such as `create_scene_tool`, `add_node_tool`, `add_relationship_tool`, `apply_scene_edits`, `find_asset`, `render_scene`, `export_scene`, `import_pixels`, `undo_scene`, and `redo_scene`. `apply_scene_edits` lets an agent dry-run and atomically save a multi-step semantic change as one undoable operation. It communicates over stdio and does not require FastAPI or Node.js.
 
 The repository also contains an installable Codex plugin under `plugins/scenelyr` and
 a marketplace manifest under `.agents/plugins`. The plugin launches this same Python

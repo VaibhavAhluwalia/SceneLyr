@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, ConfigDict
 
 from .assets import search_assets
 from .compiler import compile_scene
@@ -20,6 +21,22 @@ from .store import SceneStore
 
 mcp = FastMCP("scenelyr")
 store = SceneStore()
+
+
+class SceneEdit(BaseModel):
+    """One coordinate-free operation inside an atomic MCP scene update."""
+
+    model_config = ConfigDict(extra="forbid")
+    action: Literal[
+        "add_node", "update_node", "remove_node", "add_relationship",
+        "remove_relationship", "reverse_arrow", "reconnect_arrow",
+    ]
+    node_id: str | None = None
+    edge_id: str | None = None
+    label: str | None = None
+    kind: str | None = None
+    from_id: str | None = None
+    to_id: str | None = None
 
 
 def _json(scene: SemanticScene | dict | list) -> str:
@@ -44,6 +61,71 @@ def _mutate(scene_id: str, update) -> SemanticScene:
         save_scene(updated)
         return updated
     return store.mutate(scene_id, persist)
+
+
+def _required(edit: SceneEdit, *names: str) -> list[str]:
+    values = []
+    for name in names:
+        value = getattr(edit, name)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise ValueError(f"{edit.action} requires {name}")
+        values.append(value)
+    return values
+
+
+def _apply_scene_edit(scene: SemanticScene, edit: SceneEdit) -> SemanticScene:
+    if edit.action == "add_node":
+        node_id, label = _required(edit, "node_id", "label")
+        return add_node(scene, {"id": node_id, "label": label, "kind": edit.kind or "service"})
+    if edit.action == "update_node":
+        node_id, = _required(edit, "node_id")
+        patch = {key: value for key, value in {"label": edit.label, "kind": edit.kind}.items() if value is not None}
+        if not patch:
+            raise ValueError("update_node requires label or kind")
+        return update_node(scene, node_id, **patch)
+    if edit.action == "remove_node":
+        node_id, = _required(edit, "node_id")
+        return remove_node(scene, node_id)
+    if edit.action == "add_relationship":
+        from_id, to_id = _required(edit, "from_id", "to_id")
+        return add_edge(scene, {"from": from_id, "to": to_id,
+                                "kind": edit.kind or "relationship", "label": edit.label})
+    if edit.action == "remove_relationship":
+        edge_id, = _required(edit, "edge_id")
+        if not any(edge.id == edge_id for edge in scene.edges):
+            raise ValueError(f"Unknown edge: {edge_id}")
+        return remove_edge(scene, edge_id)
+    if edit.action in {"reverse_arrow", "reconnect_arrow"}:
+        edge_id, = _required(edit, "edge_id")
+        data = scene.to_dict()
+        edge = next((item for item in data["edges"] if item.get("id") == edge_id), None)
+        if not edge:
+            raise ValueError(f"Unknown edge: {edge_id}")
+        if edit.action == "reverse_arrow":
+            edge["from"], edge["to"] = edge["to"], edge["from"]
+            edge.setdefault("metadata", {})["direction"] = "agent-reversed"
+        else:
+            from_id, to_id = _required(edit, "from_id", "to_id")
+            edge.update({"from": from_id, "to": to_id})
+            if edit.label is not None:
+                edge["label"] = edit.label
+            edge.setdefault("metadata", {})["direction"] = "agent-edited"
+        return SemanticScene.model_validate(data)
+    raise ValueError(f"Unsupported scene edit: {edit.action}")
+
+
+def _apply_scene_edits(scene: SemanticScene, edits: list[SceneEdit]) -> SemanticScene:
+    if not edits:
+        raise ValueError("At least one scene edit is required")
+    if len(edits) > 50:
+        raise ValueError("A batch can contain at most 50 scene edits")
+    updated = scene
+    for index, edit in enumerate(edits):
+        try:
+            updated = _apply_scene_edit(updated, edit)
+        except (ValueError, StopIteration) as error:
+            raise ValueError(f"Edit {index + 1} ({edit.action}) failed: {error}") from error
+    return updated
 
 
 @mcp.tool()
@@ -82,6 +164,21 @@ def add_relationship_tool(scene_id: str, from_id: str, to_id: str,
     """Connect two semantic objects."""
     edge = {"from": from_id, "to": to_id, "kind": kind, "label": label}
     return _json(_mutate(scene_id, lambda scene: add_edge(scene, edge)))
+
+
+@mcp.tool()
+def apply_scene_edits(scene_id: str, edits: list[SceneEdit], dry_run: bool = False) -> str:
+    """Validate and apply up to 50 semantic edits atomically; the saved batch is one undo step."""
+    if dry_run:
+        updated = _apply_scene_edits(_get(scene_id), edits)
+    else:
+        updated = _mutate(scene_id, lambda scene: _apply_scene_edits(scene, edits))
+    return _json({
+        "applied": not dry_run,
+        "dryRun": dry_run,
+        "operationCount": len(edits),
+        "scene": updated.to_dict(),
+    })
 
 
 @mcp.tool()

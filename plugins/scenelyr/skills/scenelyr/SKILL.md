@@ -20,6 +20,7 @@ Use the SceneLyr MCP tools instead of manipulating diagram pixels or coordinates
 - Use `reverse_arrow` when endpoints are correct but direction is wrong.
 - Use `reconnect_arrow` when an arrow attaches to the wrong objects.
 - Use the semantic node and relationship tools for structural changes.
+- Use `apply_scene_edits` when a request needs several related changes. Dry-run the full batch first when references or labels are uncertain; a saved batch is atomic and becomes one undo step.
 - Do not invent raw coordinate edits; SceneLyr owns deterministic layout.
 
 ## Persist and export

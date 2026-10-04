@@ -39,6 +39,11 @@ Run the direct Python MCP server with:
 The installed SceneLyr Codex plugin launches this same server automatically. FastAPI
 and the browser UI are not involved in MCP calls.
 
+For a meaningful multi-step smoke test, call `apply_scene_edits` with two node
+additions and one relationship. Run it once with `dry_run=true`, then save the same
+batch and call `undo_scene`. The preview must not mutate the scene, the saved batch
+must create all three records, and one undo must remove the whole batch.
+
 ## R-01 release validation
 
 Run the deterministic image acceptance matrix and create a reviewable local report:

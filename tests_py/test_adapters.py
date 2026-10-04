@@ -3,9 +3,12 @@ import json
 from fastapi.testclient import TestClient
 import cv2
 import numpy as np
+import pytest
 
 from scenelyr.api import app
-from scenelyr.mcp_server import mcp
+from scenelyr import mcp_server
+from scenelyr.mcp_server import SceneEdit, apply_scene_edits, create_scene_tool, mcp, undo_scene
+from scenelyr.store import SceneStore
 
 
 def test_fastapi_health_and_capabilities():
@@ -66,6 +69,7 @@ def test_python_mcp_registers_tools():
     tools = {tool.name: tool for tool in mcp._tool_manager.list_tools()}
     names = set(tools)
     assert {"create_scene_tool", "import_pixels", "render_scene", "export_scene",
+            "apply_scene_edits",
             "rename_object", "reverse_arrow", "reconnect_arrow",
             "inspect_arrow_detection_profile", "inspect_arrowhead_detection_profile",
             "inspect_junction_detection_profile",
@@ -73,6 +77,35 @@ def test_python_mcp_registers_tools():
             "redetect_arrows"} <= names
     override_schema = tools["redetect_arrows"].parameters["properties"]["overrides"]
     assert {item["type"] for item in override_schema["anyOf"]} == {"object", "null"}
+
+
+def test_atomic_mcp_scene_edits_validate_save_and_undo(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCENELYR_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(mcp_server, "store", SceneStore())
+    create_scene_tool("batch-test", title="Batch test")
+    edits = [
+        SceneEdit(action="add_node", node_id="customer", label="Customer", kind="actor"),
+        SceneEdit(action="add_node", node_id="service", label="Order service"),
+        SceneEdit(action="add_relationship", from_id="customer", to_id="service", label="places order"),
+    ]
+    preview = json.loads(apply_scene_edits("batch-test", edits, dry_run=True))
+    assert not preview["applied"] and len(preview["scene"]["nodes"]) == 2
+    assert json.loads(mcp_server.inspect_scene("batch-test"))["nodes"] == []
+
+    applied = json.loads(apply_scene_edits("batch-test", edits))
+    assert applied["applied"] and applied["operationCount"] == 3
+    assert len(applied["scene"]["edges"]) == 1
+    undone = json.loads(undo_scene("batch-test"))
+    assert undone["nodes"] == [] and undone["edges"] == []
+
+    before = json.loads(mcp_server.inspect_scene("batch-test"))
+    invalid = [
+        SceneEdit(action="add_node", node_id="temporary", label="Temporary"),
+        SceneEdit(action="add_relationship", from_id="temporary", to_id="missing"),
+    ]
+    with pytest.raises(ValueError, match=r"Edit 2 \(add_relationship\) failed"):
+        apply_scene_edits("batch-test", invalid)
+    assert json.loads(mcp_server.inspect_scene("batch-test")) == before
 
 
 def test_release_validation_is_available_in_existing_ui(tmp_path, monkeypatch):
