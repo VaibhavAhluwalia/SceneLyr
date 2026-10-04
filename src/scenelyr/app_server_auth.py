@@ -15,9 +15,11 @@ class AppServerAuth:
         result = self.request('account/read', {'refreshToken': False})
         account = result.get('account') or {}
         # Strict projection: email, tokens, account IDs and unknown fields stay server-side.
-        return {'mode': 'chatgpt' if account.get('type') == 'chatgpt' else 'local',
+        connected = account.get('type') == 'chatgpt'
+        return {'mode': 'chatgpt' if connected else 'local',
                 'label': 'ChatGPT connected' if account.get('type') == 'chatgpt' else 'Local workspace',
-                'loginAvailable': True}
+                'loginAvailable': True, 'planUsage': connected,
+                'usageLabel': 'Using ChatGPT plan' if connected else None}
 
     def start_login(self) -> dict:
         result = self.request('account/login/start', {'type': 'chatgpt'})

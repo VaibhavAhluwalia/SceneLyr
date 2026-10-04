@@ -24,10 +24,12 @@ function fullTimestamp(value){const date=new Date(value);return Number.isNaN(dat
 function structuredText(value){if(typeof value==='string')return value;try{return JSON.stringify(value,null,2);}catch{return String(value);}}
 function runMetadata(){const model=state.models.find(item=>item.id===$('model-select').value);return {model:model?.id||$('model-select').value||null,modelName:model?.name||formatModel($('model-select').value)||null,effort:$('effort-select').value||null};}
 function refreshChatHeader(){
- const metadata=runMetadata();const connected=state.account?.mode==='codex';
- $('chat-status').textContent=state.busy?(connected?'Codex connected · Working':'Running locally'):(connected?'Codex connected · Ready':'Local workspace · Ready');
+ const metadata=runMetadata();const connected=['codex','chatgpt'].includes(state.account?.mode);
+ $('chat-status').textContent=state.busy?(connected?'ChatGPT connected · Working':'Running locally'):(connected?'ChatGPT connected · Ready':'Local workspace · Ready');
  $('chat-status').dataset.state=state.busy?'working':connected?'connected':'local';
+ $('plan-status').hidden=!state.account?.planUsage;$('plan-status').textContent=state.account?.usageLabel||'Using ChatGPT plan';
  $('chat-model').textContent=metadata.modelName||'Codex default';$('chat-effort').textContent=metadata.effort?titleCase(metadata.effort)+' reasoning':'Default reasoning';
+ const connect=$('chat-connect');if(connect)connect.hidden=connected||!state.account?.loginAvailable;
 }
 function setPersistState(element,stateName,createdAt){
  if(!element)return;element.dataset.state=stateName;
@@ -76,8 +78,8 @@ function addActivity(panel,activity){
 }
 function finishActivity(panel,failed=false,metadata={}){panel.metadata={...panel.metadata,...metadata};panel.summary.textContent='Codex activity · '+panel.count+' event'+(panel.count===1?'':'s')+' · '+(failed?'Failed':'Completed');panel.details.open=failed;const payload={role:'activity',content:panel.summary.textContent,label:'Codex activity',events:panel.events,...Object.fromEntries(['model','modelName','effort','threadId'].filter(key=>panel.metadata[key]).map(key=>[key,panel.metadata[key]]))};if(panel.persist)saveChat(payload,panel.persistState);else setPersistState(panel.persistState,'saved',panel.metadata.createdAt);}
 function resetChat(){
- $('timeline').innerHTML='<div id="chat-empty" class="chat-empty"><span class="codex-mark large" aria-hidden="true">◇</span><strong>Work on this diagram with Codex</strong><p>Describe the complete result you want. Codex can inspect the scene, call SceneLyr tools, and show every step.</p><div class="prompt-suggestions"><button type="button" data-prompt="Inspect this diagram and explain what needs review.">Inspect this diagram</button><button type="button" data-prompt="Make this flow horizontal and keep the current visual style.">Make the flow horizontal</button><button type="button" data-prompt="Explain the uncertain arrows and fix them where the evidence is clear.">Review uncertain arrows</button></div></div>';
- updateMessageCount();
+ $('timeline').innerHTML='<div id="chat-empty" class="chat-empty"><span class="codex-mark large" aria-hidden="true">◇</span><strong>Work on this diagram with Codex</strong><p>Describe the result you want. Codex can inspect the open scene, call SceneLyr MCP tools, and show its work.</p><button type="button" id="chat-connect" class="chat-connect" hidden>Continue with ChatGPT</button><div class="prompt-suggestions"><button type="button" data-prompt="Inspect this diagram and explain what needs review.">Inspect this diagram</button><button type="button" data-prompt="Make this flow horizontal and keep the current visual style.">Make the flow horizontal</button><button type="button" data-prompt="Explain the uncertain arrows and fix them where the evidence is clear.">Review uncertain arrows</button></div></div>';
+ updateMessageCount();refreshChatHeader();
 }
 async function loadChat(sceneId){
  resetChat();const data=await api(sceneURL(sceneId)+'/chat');if(state.scene?.id!==sceneId)return;
@@ -94,12 +96,25 @@ async function loadAccountStatus() {
  try {
   const account=await api('/workspace/account');state.account=account;
   const modelName=formatModel(account.model);const effort=account.reasoningEffort;
-  $('account').textContent=account.mode==='codex'?(modelName.replace(/^GPT-6 /,'')+(effort?' · '+titleCase(effort):'')):'Local';
+  $('account').textContent=['codex','chatgpt'].includes(account.mode)?'ChatGPT':'Local';
   $('account').setAttribute('aria-label',account.label+(modelName?' using '+modelName:''));
   $('account').title=[account.label,modelName,effort&&titleCase(effort)+' reasoning'].filter(Boolean).join(' · ');
-  $('composer-mode').textContent=account.mode==='codex'?'SceneLyr MCP':'Local commands';
+  $('composer-mode').textContent=['codex','chatgpt'].includes(account.mode)?'SceneLyr MCP':'Local commands';
   refreshChatHeader();
  } catch {state.account={mode:'local'};refreshChatHeader();}
+}
+function renderAccountDialog(){
+ const account=state.account||{mode:'local',loginAvailable:false};const connected=account.mode==='codex'||account.mode==='chatgpt';
+ const model=formatModel(account.model);const usage=account.planUsage?'<span class="status-pill success">✓ Using ChatGPT plan</span>':'<span class="status-pill">Local tools only</span>';
+ $('account-content').innerHTML=connected?`<section class="account-hero connected"><span class="account-glyph" aria-hidden="true">◇</span><div><strong>${escape(account.label||'ChatGPT connected')}</strong><p>${escape(account.message||'Your account is ready for Codex requests.')}</p></div></section><div class="account-facts"><div><span>Status</span><strong>Connected</strong></div><div><span>Usage</span>${usage}</div>${model?`<div><span>Default model</span><strong>${escape(model)}</strong></div>`:''}</div><p class="privacy-note">SceneLyr never receives your password or browser token. Codex keeps the authenticated session and returns only connection status to this page.</p><div class="account-actions"><a class="button-link" href="https://chatgpt.com/#settings/Usage" target="_blank" rel="noopener noreferrer">Manage usage ↗</a><button type="button" id="account-done" class="primary">Done</button></div>`:`<section class="account-hero"><span class="account-glyph" aria-hidden="true">◇</span><div><strong>Connect your ChatGPT plan</strong><p>Use Codex to understand requests and call SceneLyr MCP tools. Diagram detection and manual edits remain available locally.</p></div></section><ul class="account-benefits"><li><span>✓</span><div><strong>No API key</strong><p>Use an eligible ChatGPT plan after you approve access.</p></div></li><li><span>✓</span><div><strong>Private handoff</strong><p>Authentication stays in Codex; this browser receives no credentials.</p></div></li><li><span>✓</span><div><strong>Visible work</strong><p>Model, reasoning, MCP calls, and results appear in the conversation.</p></div></li></ul><button type="button" id="continue-chatgpt" class="primary continue-chatgpt" ${account.loginAvailable?'':'disabled'}>${account.loginPending?'Waiting for browser sign-in…':'Continue with ChatGPT'}</button>${account.loginAvailable?'':'<p class="account-unavailable">Install or update the ChatGPT desktop app to enable sign-in.</p>'}<p class="privacy-note">Connecting does not give SceneLyr access to your ChatGPT conversations.</p>`;
+}
+async function openAccount(){await loadAccountStatus();renderAccountDialog();$('account-dialog').showModal();}
+async function startChatGPTLogin(){
+ const button=$('continue-chatgpt');if(button){button.disabled=true;button.textContent='Opening ChatGPT…';}
+ try{const result=await post('/workspace/account/login');if(result.authUrl)window.open(result.authUrl,'_blank','noopener,noreferrer');notice('Finish signing in with ChatGPT in your browser.');
+  for(let attempt=0;attempt<60;attempt++){await sleep(1000);await loadAccountStatus();renderAccountDialog();if(['codex','chatgpt'].includes(state.account?.mode)){notice('ChatGPT connected. Codex and SceneLyr MCP tools are ready.');await loadModels();return;}}
+  notice('Sign-in is still waiting. You can close this panel and return after approving access.',true);
+ }catch(e){notice(e.message||String(e),true);renderAccountDialog();}
 }
 const titleCase=value=>String(value||'').replace(/(^|[-_ ])(\w)/g,(_,space,letter)=>(space?' ':'')+letter.toUpperCase());
 const formatModel=value=>value?String(value).split('-').map((part,index)=>index===0?'GPT':index===1&&/^\d/.test(part)?part.toUpperCase():titleCase(part)).join('-').replace(/^GPT-(\d[^-]*)-/,'GPT-$1 '):'';
@@ -356,7 +371,7 @@ $('pending-preview').addEventListener('click',e=>{if(e.target.id==='apply-previe
 $('composer').addEventListener('submit',e=>{e.preventDefault();const value=$('command').value.trim();if(value){$('command').value='';resizeCommand();sendCommand(value);}});
 $('command').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('composer').requestSubmit();}});
 $('command').addEventListener('input',resizeCommand);
-$('timeline').addEventListener('click',e=>{const suggestion=e.target.closest('[data-prompt]');if(suggestion){$('command').value=suggestion.dataset.prompt;resizeCommand();$('command').focus();}});
+$('timeline').addEventListener('click',e=>{if(e.target.closest('#chat-connect')){openAccount();return;}const suggestion=e.target.closest('[data-prompt]');if(suggestion){$('command').value=suggestion.dataset.prompt;resizeCommand();$('command').focus();}});
 $('model-select').addEventListener('change',()=>updateEffortChoices());$('effort-select').addEventListener('change',()=>remember('reasoningEffort',$('effort-select').value));
 for(const id of ['choose-image','import-button','attach'])$(id).addEventListener('click',()=>$('file').click());
 $('file').addEventListener('change',()=>{const file=$('file').files[0];$('file').value='';importFile(file);});
@@ -374,7 +389,8 @@ $('close-image-viewer').addEventListener('click',()=>$('image-viewer').close());
 $('image-viewer').addEventListener('click',e=>{if(e.target===$('image-viewer'))$('image-viewer').close();});$('image-viewer').addEventListener('cancel',e=>{e.preventDefault();$('image-viewer').close();});
 $('image-stage').addEventListener('wheel',e=>{if(!e.ctrlKey&&!e.metaKey)return;e.preventDefault();setImageZoom(imageZoom+(e.deltaY<0?.2:-.2));},{passive:false});
 $('new-scene').addEventListener('click',()=>{if(state.importing||state.busy){notice('Wait for the current operation to finish.');return;}clearPreview();state.scene=null;state.selected=null;remember('scene','');history.replaceState(null,'','/');location.reload();});
-$('account').addEventListener('click',async()=>{try{const account=await api('/workspace/account');const model=formatModel(account.model);info(account.label,`<p>${escape(account.message)}</p>${model?`<p><strong>${escape(model)}</strong>${account.reasoningEffort?' · '+escape(titleCase(account.reasoningEffort))+' reasoning':''}</p>`:''}<p>${escape(account.integration)}</p><p>No credentials are read by this workspace.</p>`);}catch(e){error(e);}});
+$('account').addEventListener('click',()=>openAccount().catch(error));$('close-account').addEventListener('click',()=>$('account-dialog').close());
+$('account-content').addEventListener('click',e=>{if(e.target.closest('#continue-chatgpt'))startChatGPTLogin();if(e.target.closest('#account-done'))$('account-dialog').close();});
 $('command-help').addEventListener('click',()=>info('SceneLyr Commands','<p>Write a natural-language request for Codex, or use an exact local command for a faster deterministic edit. Codex receives the open scene and can call the configured SceneLyr MCP tools.</p><pre>Make this flow horizontal and give the steps realistic names\nrename selected to “Customer”\nadd “Cache”\nconnect “Customer” to “Cache”\nredetect\ninspect\nrender\nexport svg\nundo / redo\nvalidate</pre><p>Keyboard: Tab to move, Enter to select, arrow keys in the hierarchy or on pane dividers. ⌘/Ctrl Z previews undo; Shift adds redo. Escape closes sheets.</p>'));
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();if(state.scene)sendCommand(e.shiftKey?'redo':'undo');}});
 window.addEventListener('resize',()=>{if(sheetPane)closeSheet();updatePaneButtons();zoom();});

@@ -13,18 +13,20 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .runtime import find_codex
 
-CODEX = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _start_process() -> subprocess.Popen:
-    if not CODEX.is_file():
+    codex = find_codex()
+    if codex is None:
         raise RuntimeError("The Codex application is not installed on this computer.")
     environment = os.environ.copy()
     environment["SCENELYR_DATA_DIR"] = str(ROOT / "data")
     return subprocess.Popen(
-        [str(CODEX), "app-server", "--stdio",
+        [str(codex), "app-server", "--stdio",
          "-c", 'plugins."scenelyr@personal".mcp_servers.scenelyr.default_tools_approval_mode="auto"'],
         cwd=ROOT, env=environment,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

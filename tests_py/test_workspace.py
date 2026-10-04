@@ -276,7 +276,8 @@ def test_local_auth_and_cross_origin_protection(client):
     account = client.get('/workspace/account').json()
     assert account['mode'] in {'local', 'codex'}
     assert 'credential' not in json.dumps(account).lower()
-    assert client.post('/workspace/account/login').status_code==409
+    # A host with the Codex runtime can start ChatGPT sign-in; CI can remain local-only.
+    assert client.post('/workspace/account/login').status_code in {200,409}
     assert client.post('/workspace/validation',headers={'Origin':'https://evil.example'}).status_code==403
     assert client.get('/workspace/history',headers={'Host':'evil.example'}).status_code==403
     assert client.get('/workspace/history',headers={'Sec-Fetch-Site':'cross-site'}).status_code==403
@@ -299,7 +300,24 @@ def test_app_server_adapter_projects_safe_fields():
             return {'account':{'type':'chatgpt','email':'private@example.invalid','accessToken':'secret'}}
         return {'authUrl':'https://auth.openai.com/authorize?state=opaque','loginId':'login','accessToken':'secret'}
     adapter=AppServerAuth(request)
-    assert adapter.account()=={'mode':'chatgpt','label':'ChatGPT connected','loginAvailable':True}
+    assert adapter.account()=={'mode':'chatgpt','label':'ChatGPT connected','loginAvailable':True,
+                               'planUsage':True,'usageLabel':'Using ChatGPT plan'}
     assert 'secret' not in json.dumps(adapter.start_login())
     assert calls==[('account/read',{'refreshToken':False}),('account/login/start',{'type':'chatgpt'})]
     with pytest.raises(ValueError):AppServerAuth(lambda *_:{'authUrl':'http://evil.example'}).start_login()
+
+
+def test_local_auth_starts_codex_login_without_exposing_credentials(tmp_path, monkeypatch):
+    from scenelyr.auth import LocalAuth
+    binary=tmp_path/'codex';binary.write_text('stub')
+    adapter=LocalAuth(binary)
+    monkeypatch.setattr(adapter, 'account', lambda:{'mode':'local'})
+    calls=[]
+    class Process:
+        def poll(self): return None
+    monkeypatch.setattr('scenelyr.auth.subprocess.Popen', lambda args, **kwargs: calls.append((args,kwargs)) or Process())
+    result=adapter.start_login()
+    assert result=={'state':'browser_opened'}
+    assert calls[0][0]==[str(binary),'login']
+    assert 'credential' not in json.dumps(result).lower()
+    assert adapter.start_login()=={'state':'pending'}
