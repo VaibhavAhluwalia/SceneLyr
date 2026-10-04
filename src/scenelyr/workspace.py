@@ -15,7 +15,7 @@ from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from . import mcp_server as engine
 from .auth import auth
@@ -260,9 +260,15 @@ class CommandRequest(BaseModel):
 
 
 class ChatActivity(BaseModel):
+    stage: str | None = Field(default=None, max_length=100)
     state: str = Field(pattern=r'^(running|complete|failed)$')
     tool: str | None = Field(default=None, max_length=200)
     message: str = Field(max_length=2000)
+    callId: str | None = Field(default=None, max_length=300)
+    arguments: JsonValue | None = None
+    result: JsonValue | None = None
+    durationMs: float | None = Field(default=None, ge=0)
+    createdAt: str | None = Field(default=None, max_length=60)
 
 
 class ChatEntry(BaseModel):
@@ -270,6 +276,10 @@ class ChatEntry(BaseModel):
     content: str = Field(default='', max_length=12000)
     label: str | None = Field(default=None, max_length=300)
     events: list[ChatActivity] = Field(default_factory=list, max_length=80)
+    model: str | None = Field(default=None, max_length=100)
+    modelName: str | None = Field(default=None, max_length=200)
+    effort: str | None = Field(default=None, max_length=30)
+    threadId: str | None = Field(default=None, max_length=300)
 
 
 @router.get('/scenes/{scene_id}/chat')
@@ -286,7 +296,7 @@ def append_chat(scene_id: str, entry: ChatEntry):
         value['createdAt'] = datetime.now(UTC).isoformat()
         entries.append(value)
         save_chat(scene_id, entries)
-        return {'saved': True, 'count': min(len(entries), MAX_CHAT_ENTRIES)}
+        return {'saved': True, 'count': min(len(entries), MAX_CHAT_ENTRIES), 'entry': value}
 
 
 @router.post('/scenes/{scene_id}/agent')

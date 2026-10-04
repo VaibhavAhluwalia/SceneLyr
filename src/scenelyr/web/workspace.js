@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], models:[], openGeneration:0, chatSave:Promise.resolve()};
+const state = {scene:null, selected:null, zoom:1, preview:null, busy:false, importing:false, importJob:null, lastFile:null, sourceObjectUrl:null, overlay:false, library:[], models:[], account:null, openGeneration:0, chatSave:Promise.resolve(), pendingChatSaves:0};
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const quote = value => '"' + String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"') + '"';
 const sceneURL = id => '/workspace/scenes/' + encodeURIComponent(id);
@@ -19,58 +19,87 @@ const post = (url, data={}) => api(url,{method:'POST',headers:{'Content-Type':'a
 function notice(message, error=false) { $('notice').textContent=message; $('notice').classList.toggle('error',error); $('notice').hidden=!message; }
 function clearChatEmpty(){const empty=$('chat-empty');if(empty)empty.remove();}
 function updateMessageCount(){const count=$('timeline').querySelectorAll('.chat-message').length;$('conversation-count').textContent=count+' message'+(count===1?'':'s');}
-function saveChat(entry){if(!state.scene)return;const id=state.scene.id;state.chatSave=state.chatSave.then(()=>post(sceneURL(id)+'/chat',entry)).catch(()=>notice('The message is visible, but its chat history could not be saved.',true));}
-function log(message, kind='assistant', tool='Codex', persist=true) {
+function formatTimestamp(value){const date=new Date(value);return Number.isNaN(date.getTime())?'Time unavailable':new Intl.DateTimeFormat(undefined,{hour:'numeric',minute:'2-digit'}).format(date);}
+function fullTimestamp(value){const date=new Date(value);return Number.isNaN(date.getTime())?'Time unavailable':new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(date);}
+function structuredText(value){if(typeof value==='string')return value;try{return JSON.stringify(value,null,2);}catch{return String(value);}}
+function runMetadata(){const model=state.models.find(item=>item.id===$('model-select').value);return {model:model?.id||$('model-select').value||null,modelName:model?.name||formatModel($('model-select').value)||null,effort:$('effort-select').value||null};}
+function refreshChatHeader(){
+ const metadata=runMetadata();const connected=state.account?.mode==='codex';
+ $('chat-status').textContent=state.busy?(connected?'Codex connected · Working':'Running locally'):(connected?'Codex connected · Ready':'Local workspace · Ready');
+ $('chat-status').dataset.state=state.busy?'working':connected?'connected':'local';
+ $('chat-model').textContent=metadata.modelName||'Codex default';$('chat-effort').textContent=metadata.effort?titleCase(metadata.effort)+' reasoning':'Default reasoning';
+}
+function setPersistState(element,stateName,createdAt){
+ if(!element)return;element.dataset.state=stateName;
+ element.textContent=stateName==='running'?'In progress':stateName==='saving'?'Saving…':stateName==='saved'?'Saved on this computer':'Not saved';
+ if(createdAt){const time=element.closest('.chat-content,.activity-card')?.querySelector('time');if(time){time.dateTime=createdAt;time.textContent=formatTimestamp(createdAt);time.title=fullTimestamp(createdAt);}}
+}
+function saveChat(entry,statusElement){
+ if(!state.scene)return Promise.resolve(null);const id=state.scene.id;state.pendingChatSaves++;setPersistState(statusElement,'saving');$('save-status').textContent='Saving conversation…';
+ const request=state.chatSave.catch(()=>{}).then(()=>post(sceneURL(id)+'/chat',entry));state.chatSave=request.then(()=>undefined,()=>undefined);
+ request.then(data=>{setPersistState(statusElement,'saved',data.entry?.createdAt);}).catch(()=>{setPersistState(statusElement,'failed');notice('The message is visible, but its chat history could not be saved.',true);}).finally(()=>{state.pendingChatSaves--;if(!state.pendingChatSaves)$('save-status').textContent=statusElement?.dataset.state==='failed'?'Some messages are not saved':'Conversation saved on this computer';});
+ return request;
+}
+function addRunDetails(content,metadata){
+ const values=[['Model',metadata.modelName||metadata.model],['Reasoning',metadata.effort?titleCase(metadata.effort):null],['Thread',metadata.threadId]].filter(([,value])=>value);
+ if(!values.length)return;const details=document.createElement('details');details.className='run-details';const summary=document.createElement('summary');summary.textContent='Run details';const list=document.createElement('dl');
+ for(const [label,value] of values){const term=document.createElement('dt');term.textContent=label;const description=document.createElement('dd');description.textContent=value;list.append(term,description);}details.append(summary,list);content.append(details);
+}
+function log(message, kind='assistant', tool='Codex', persist=true, metadata={}) {
  clearChatEmpty();const role=kind==='user'?'user':kind==='error'?'error':'assistant';
- const row=document.createElement('article');row.className='chat-message '+role;
+ const row=document.createElement('article');row.className='chat-message '+role+(metadata.final?' final-response':'');
  const avatar=document.createElement('span');avatar.className='chat-avatar';avatar.setAttribute('aria-hidden','true');avatar.textContent=role==='user'?'Y':'◇';
  const content=document.createElement('div');content.className='chat-content';
  const meta=document.createElement('div');meta.className='chat-meta';
- const name=document.createElement('strong');name.textContent=role==='user'?'You':tool;
- const time=document.createElement('span');time.textContent='Now';meta.append(name,time);
+ const name=document.createElement('strong');name.textContent=metadata.final?'Final response':role==='user'?'You':tool;
+ const createdAt=metadata.createdAt||new Date().toISOString();const time=document.createElement('time');time.dateTime=createdAt;time.textContent=formatTimestamp(createdAt);time.title=fullTimestamp(createdAt);
+ const persistState=document.createElement('span');persistState.className='persist-state';setPersistState(persistState,persist?'saving':'saved');meta.append(name,time,persistState);
  const copy=document.createElement('div');copy.className='chat-copy';copy.textContent=message;
- content.append(meta,copy);row.append(avatar,content);$('timeline').append(row);
+ content.append(meta,copy);if(metadata.final)addRunDetails(content,metadata);row.append(avatar,content);$('timeline').append(row);
  while($('timeline').children.length>80)$('timeline').firstChild.remove();
  updateMessageCount();$('timeline').scrollTop=$('timeline').scrollHeight;
- if(persist)saveChat({role,content:String(message),label:tool});return row;
+ if(persist)saveChat({role,content:String(message),label:tool,...Object.fromEntries(['model','modelName','effort','threadId'].filter(key=>metadata[key]).map(key=>[key,metadata[key]]))},persistState);return row;
 }
-function beginActivity(persist=true){
+function beginActivity(persist=true,metadata={}){
  clearChatEmpty();const details=document.createElement('details');details.className='activity-card';details.open=true;
- const summary=document.createElement('summary');summary.textContent='Codex is working';
- const list=document.createElement('ol');details.append(summary,list);$('timeline').append(details);$('timeline').scrollTop=$('timeline').scrollHeight;
- return {details,summary,list,count:0,events:[],persist};
+ const summary=document.createElement('summary');summary.textContent='Codex activity · Starting';
+ const createdAt=metadata.createdAt||new Date().toISOString();const list=document.createElement('ol');list.className='activity-events';const footer=document.createElement('div');footer.className='activity-footer';const time=document.createElement('time');time.dateTime=createdAt;time.textContent=formatTimestamp(createdAt);time.title=fullTimestamp(createdAt);const persistState=document.createElement('span');persistState.className='persist-state';setPersistState(persistState,persist?'running':'saved');footer.append(time,persistState);details.append(summary,list,footer);$('timeline').append(details);$('timeline').scrollTop=$('timeline').scrollHeight;
+ return {details,summary,list,footer,persistState,count:0,events:[],persist,metadata:{...metadata,createdAt}};
 }
 function addActivity(panel,activity){
- const item=document.createElement('li');item.dataset.state=activity.state;
+ const item=document.createElement('li');item.dataset.state=activity.state;item.className='activity-event';
  const icon=document.createElement('span');icon.className='activity-icon';icon.textContent=activity.state==='complete'?'✓':activity.state==='failed'?'!':'…';
- const copy=document.createElement('span');const name=activity.tool?'SceneLyr MCP · '+activity.tool:'Codex';copy.textContent=name+' — '+activity.message;
- item.append(icon,copy);panel.list.append(item);panel.events.push({state:activity.state,tool:activity.tool||null,message:activity.message});panel.count++;panel.summary.textContent='Codex is working · '+panel.count+' step'+(panel.count===1?'':'s');$('timeline').scrollTop=$('timeline').scrollHeight;
+ const body=document.createElement('div');const heading=document.createElement('div');heading.className='activity-heading';const name=document.createElement(activity.tool?'code':'strong');name.textContent=activity.tool||titleCase(activity.stage||'Codex');const stateLabel=document.createElement('span');stateLabel.className='activity-state';stateLabel.textContent=activity.state==='complete'?'Completed':activity.state==='failed'?'Failed':'Running';heading.append(name,stateLabel);const message=document.createElement('p');message.textContent=activity.message;body.append(heading,message);
+ const eventMeta=document.createElement('div');eventMeta.className='activity-meta';if(activity.createdAt){const time=document.createElement('time');time.dateTime=activity.createdAt;time.textContent=formatTimestamp(activity.createdAt);time.title=fullTimestamp(activity.createdAt);eventMeta.append(time);}if(activity.durationMs!=null){const duration=document.createElement('span');duration.textContent=Math.round(activity.durationMs)+' ms';eventMeta.append(duration);}if(eventMeta.children.length)body.append(eventMeta);
+ for(const [key,label] of [['arguments','Input arguments'],['result',activity.state==='failed'?'Failure details':'Result']]){if(Object.prototype.hasOwnProperty.call(activity,key)&&activity[key]!=null){const disclosure=document.createElement('details');disclosure.className='activity-payload';const payloadSummary=document.createElement('summary');payloadSummary.textContent=label;const pre=document.createElement('pre');pre.textContent=structuredText(activity[key]);disclosure.append(payloadSummary,pre);body.append(disclosure);}}
+ item.append(icon,body);panel.list.append(item);panel.events.push({...activity});panel.count++;panel.summary.textContent='Codex activity · '+panel.count+' event'+(panel.count===1?'':'s')+' · Running';$('timeline').scrollTop=$('timeline').scrollHeight;
 }
-function finishActivity(panel,failed=false){panel.summary.textContent=(failed?'Work stopped':'Work completed')+' · '+panel.count+' step'+(panel.count===1?'':'s');panel.details.open=failed;if(panel.persist)saveChat({role:'activity',content:panel.summary.textContent,label:'Codex activity',events:panel.events});}
+function finishActivity(panel,failed=false,metadata={}){panel.metadata={...panel.metadata,...metadata};panel.summary.textContent='Codex activity · '+panel.count+' event'+(panel.count===1?'':'s')+' · '+(failed?'Failed':'Completed');panel.details.open=failed;const payload={role:'activity',content:panel.summary.textContent,label:'Codex activity',events:panel.events,...Object.fromEntries(['model','modelName','effort','threadId'].filter(key=>panel.metadata[key]).map(key=>[key,panel.metadata[key]]))};if(panel.persist)saveChat(payload,panel.persistState);else setPersistState(panel.persistState,'saved',panel.metadata.createdAt);}
 function resetChat(){
  $('timeline').innerHTML='<div id="chat-empty" class="chat-empty"><span class="codex-mark large" aria-hidden="true">◇</span><strong>Work on this diagram with Codex</strong><p>Describe the complete result you want. Codex can inspect the scene, call SceneLyr tools, and show every step.</p><div class="prompt-suggestions"><button type="button" data-prompt="Inspect this diagram and explain what needs review.">Inspect this diagram</button><button type="button" data-prompt="Make this flow horizontal and keep the current visual style.">Make the flow horizontal</button><button type="button" data-prompt="Explain the uncertain arrows and fix them where the evidence is clear.">Review uncertain arrows</button></div></div>';
  updateMessageCount();
 }
 async function loadChat(sceneId){
  resetChat();const data=await api(sceneURL(sceneId)+'/chat');if(state.scene?.id!==sceneId)return;
- for(const entry of data.entries||[]){if(entry.role==='activity'){const panel=beginActivity(false);for(const activity of entry.events||[])addActivity(panel,activity);finishActivity(panel,entry.content.startsWith('Work stopped'));}else log(entry.content,entry.role,entry.label||'Codex',false);}
+ for(const entry of data.entries||[]){if(entry.role==='activity'){const panel=beginActivity(false,entry);for(const activity of entry.events||[])addActivity(panel,activity);finishActivity(panel,entry.content.includes('Failed')||entry.content.startsWith('Work stopped'),entry);}else log(entry.content,entry.role,entry.label||'Codex',false,{...entry,final:entry.role==='assistant'&&Boolean(entry.threadId)});}
  $('timeline').scrollTop=$('timeline').scrollHeight;
 }
 function error(error) { notice(error.message || String(error),true); log(error.message || String(error),'error'); }
-function busy(value) { state.busy=value; $('send').disabled=value; $('undo').disabled=value || !state.scene?.history.canUndo; $('redo').disabled=value || !state.scene?.history.canRedo; }
+function busy(value) { state.busy=value; $('send').disabled=value; $('undo').disabled=value || !state.scene?.history.canUndo; $('redo').disabled=value || !state.scene?.history.canRedo; refreshChatHeader(); }
 async function loadLibrary() {
  const data=await api('/workspace/history'); state.library=data.scenes;
  $('library').innerHTML=data.scenes.length?data.scenes.map(item=>`<button class="library-item" data-open="${escape(item.id)}" aria-current="${state.scene?.id===item.id}">${escape(item.title)}<small>${item.objects} objects · ${item.connections} connections</small></button>`).join(''):'<p class="muted" style="padding:8px">Your imported diagrams will appear here.</p>';
 }
 async function loadAccountStatus() {
  try {
-  const account=await api('/workspace/account');
+  const account=await api('/workspace/account');state.account=account;
   const modelName=formatModel(account.model);const effort=account.reasoningEffort;
   $('account').textContent=account.mode==='codex'?(modelName.replace(/^GPT-6 /,'')+(effort?' · '+titleCase(effort):'')):'Local';
   $('account').setAttribute('aria-label',account.label+(modelName?' using '+modelName:''));
   $('account').title=[account.label,modelName,effort&&titleCase(effort)+' reasoning'].filter(Boolean).join(' · ');
   $('composer-mode').textContent=account.mode==='codex'?'SceneLyr MCP':'Local commands';
- } catch {}
+  refreshChatHeader();
+ } catch {state.account={mode:'local'};refreshChatHeader();}
 }
 const titleCase=value=>String(value||'').replace(/(^|[-_ ])(\w)/g,(_,space,letter)=>(space?' ':'')+letter.toUpperCase());
 const formatModel=value=>value?String(value).split('-').map((part,index)=>index===0?'GPT':index===1&&/^\d/.test(part)?part.toUpperCase():titleCase(part)).join('-').replace(/^GPT-(\d[^-]*)-/,'GPT-$1 '):'';
@@ -78,7 +107,7 @@ function updateEffortChoices(preferred) {
  const model=state.models.find(item=>item.id===$('model-select').value);const efforts=model?.efforts||[];
  $('effort-select').innerHTML=efforts.map(value=>`<option value="${escape(value)}">${escape(titleCase(value))}</option>`).join('')||'<option value="">Default</option>';
  const saved=preferred||recall('reasoningEffort');$('effort-select').value=efforts.includes(saved)?saved:(model?.defaultEffort||efforts[0]||'');$('effort-select').disabled=!efforts.length;
- remember('model',$('model-select').value);remember('reasoningEffort',$('effort-select').value);
+ remember('model',$('model-select').value);remember('reasoningEffort',$('effort-select').value);refreshChatHeader();
 }
 async function loadModels() {
  try {
@@ -197,7 +226,7 @@ async function sendCommand(message) {
  if(state.busy)return;
  if(!state.scene){notice('Import an image or open a recent scene before editing. Use Command Guide for examples.');return;}
  if(state.importing){notice('Wait for the current import to finish before editing.');return;}
- await clearPreview(); log(message,'user'); busy(true); notice('');
+ await clearPreview(); log(message,'user','You',true,runMetadata()); busy(true); notice('');
  const progress=setTimeout(()=>notice('Codex is interpreting your request and calling SceneLyr MCP tools…'),300);
  try {
   const id=state.scene.id;let response;
@@ -217,12 +246,12 @@ async function sendCommand(message) {
    log(response.summary);const a=document.createElement('a');a.href=response.url;a.download='';a.textContent='Download '+message.split(' ').pop().toUpperCase();$('timeline').lastElementChild.append(document.createElement('br'),a);a.click();
   } else if(response.type==='job'&&response.kind==='agent') {await pollAgent(response.job,id);}
   else if(response.type==='job') {log(response.summary);pollValidation(response.job);}
-  else if(response.type==='agent') {if(response.scene)renderScene(response.scene);log(response.message,'tool',response.tools?.length?'Codex · '+response.tools.join(', '):'Codex');notice('Codex completed the request.');}
+  else if(response.type==='agent') {if(response.scene)renderScene(response.scene);log(response.message,'assistant','Codex',true,{...response,final:true});notice('Codex completed the request.');}
   else {if(response.scene)renderScene(response.scene);log(response.summary,'tool',response.tool);}
  }catch(e){error(e);}finally{clearTimeout(progress);busy(false);}
 }
 async function pollAgent(id,sceneId) {
- let shown=0;const panel=beginActivity();
+ let shown=0;const panel=beginActivity(true,runMetadata());
  while(true){
   const job=await api('/workspace/jobs/'+encodeURIComponent(id));
   for(const activity of job.events.slice(shown))addActivity(panel,activity);
@@ -231,8 +260,8 @@ async function pollAgent(id,sceneId) {
   if(job.state==='complete'){
    const result=job.result;if(state.scene?.id!==sceneId)return;
    if(result.scene)renderScene(result.scene);
-   finishActivity(panel);
-   log(result.message,'assistant',result.tools?.length?'Codex · '+result.tools.join(', '):'Codex');
+   finishActivity(panel,false,result);
+   log(result.message,'assistant','Codex',true,{...result,final:true});
    notice('Codex completed the request.');return;
   }
   await sleep(350);

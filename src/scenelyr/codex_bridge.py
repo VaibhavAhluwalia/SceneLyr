@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -53,16 +54,33 @@ def _activity(value: dict, report: Callable[[dict], None] | None) -> None:
         return
     method, params = value.get("method"), value.get("params") or {}
     item = params.get("item") or {}
+    observed_at = datetime.now(UTC).isoformat()
     if method == "turn/started":
-        report({"stage": "codex", "state": "running", "message": "Codex started understanding the request."})
+        report({"stage": "codex", "state": "running", "message": "Codex started understanding the request.",
+                "createdAt": observed_at})
     elif method == "item/started" and item.get("type") == "mcpToolCall":
         arguments = item.get("arguments") or {}
         report({"stage": "tool", "state": "running", "tool": item.get("tool"),
-                "message": f'Calling {item.get("tool", "SceneLyr tool")} with {json.dumps(arguments, ensure_ascii=False)}'})
+                "callId": item.get("id"), "arguments": arguments,
+                "message": (
+                    f'Calling {item.get("tool", "SceneLyr tool")}.'
+                ),
+                "createdAt": observed_at})
     elif method == "item/completed" and item.get("type") == "mcpToolCall":
         state = "complete" if item.get("status") == "completed" and not item.get("error") else "failed"
-        report({"stage": "tool", "state": state, "tool": item.get("tool"),
-                "message": f'{item.get("tool", "SceneLyr tool")} {"completed" if state == "complete" else "failed"}.'})
+        result = item.get("result")
+        if result is None:
+            result = item.get("output")
+        if result is None and item.get("error") is not None:
+            result = item.get("error")
+        activity = {"stage": "tool", "state": state, "tool": item.get("tool"),
+                    "callId": item.get("id"), "arguments": item.get("arguments"),
+                    "result": result, "createdAt": observed_at,
+                    "message": f'{item.get("tool", "SceneLyr tool")} {"completed" if state == "complete" else "failed"}.'}
+        duration = item.get("durationMs")
+        if isinstance(duration, (int, float)):
+            activity["durationMs"] = duration
+        report({key: field for key, field in activity.items() if field is not None})
 
 
 def _read_until(process: subprocess.Popen, predicate, messages: list[dict],
@@ -89,7 +107,8 @@ def _read_until(process: subprocess.Popen, predicate, messages: list[dict],
             if report:
                 tool = (params.get("_meta") or {}).get("tool_description", "SceneLyr MCP tool")
                 report({"stage": "approval", "state": "complete" if accepted else "failed",
-                        "message": f'{"Approved" if accepted else "Declined"}: {tool}'})
+                        "message": f'{"Approved" if accepted else "Declined"}: {tool}',
+                        "createdAt": datetime.now(UTC).isoformat()})
             continue
         if value.get("method") and value.get("id") not in {None, 1, 2, 3}:
             raise RuntimeError("Codex requested an interaction this workspace does not support yet.")
@@ -126,7 +145,8 @@ def run_codex(scene_id: str, message: str, selected: str | None = None,
             "name": "scenelyr_workspace", "title": "SceneLyr Workspace", "version": "0.1.0"
         }})
         if report:
-            report({"stage": "connection", "state": "running", "message": "Connecting to your signed-in Codex session."})
+            report({"stage": "connection", "state": "running", "message": "Connecting to your signed-in Codex session.",
+                    "createdAt": datetime.now(UTC).isoformat()})
         _read_until(process, lambda item: item.get("id") == 1, events, report)
         _send(process, "initialized", None, {})
         _send(process, "model/list", 4, {"limit": 50, "includeHidden": False})
@@ -141,7 +161,8 @@ def run_codex(scene_id: str, message: str, selected: str | None = None,
         if report:
             detail = f" with {selected_effort} reasoning" if selected_effort else ""
             report({"stage": "model", "state": "complete",
-                    "message": f"Using {model_name}{detail}."})
+                    "message": f"Using {model_name}{detail}.",
+                    "createdAt": datetime.now(UTC).isoformat()})
         _send(process, "thread/start", 2, {
             "cwd": str(ROOT), "approvalPolicy": "on-request", "sandbox": "workspace-write",
             "serviceName": "scenelyr_workspace", **({"model": model_id} if model_id else {}),

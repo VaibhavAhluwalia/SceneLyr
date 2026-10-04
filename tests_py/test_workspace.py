@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from scenelyr.api import app
 from scenelyr import mcp_server as engine
 from scenelyr import workspace
+from scenelyr.codex_bridge import _activity
 from scenelyr.commands import parse
 from scenelyr.models import SemanticScene
 from scenelyr.storage import load_import, save_scene
@@ -112,12 +114,23 @@ def test_scene_chat_is_saved_restored_and_bounded(client):
     assert user.status_code == 200 and user.json()['count'] == 1
     activity = client.post('/workspace/scenes/workspace-test/chat', json={
         'role': 'activity', 'content': 'Work completed · 1 step', 'label': 'Codex activity',
-        'events': [{'state': 'complete', 'tool': 'inspect_scene', 'message': 'Inspection completed.'}],
+        'model': 'gpt-6-sol', 'modelName': 'GPT-6 Sol', 'effort': 'high',
+        'threadId': 'thread-test',
+        'events': [{'stage': 'tool', 'state': 'complete', 'tool': 'inspect_scene',
+                    'callId': 'call-1', 'message': 'Inspection completed.',
+                    'arguments': {'scene_id': 'workspace-test'},
+                    'result': {'objects': 2, 'warning': '<review>'}, 'durationMs': 42,
+                    'createdAt': '2026-10-04T08:30:00+00:00'}],
     })
     assert activity.status_code == 200
+    assert activity.json()['entry']['createdAt'].endswith('+00:00')
     restored = client.get('/workspace/scenes/workspace-test/chat').json()['entries']
     assert [entry['role'] for entry in restored] == ['user', 'activity']
     assert restored[1]['events'][0]['tool'] == 'inspect_scene'
+    assert restored[1]['events'][0]['arguments'] == {'scene_id': 'workspace-test'}
+    assert restored[1]['events'][0]['result']['warning'] == '<review>'
+    assert restored[1]['modelName'] == 'GPT-6 Sol'
+    assert restored[1]['threadId'] == 'thread-test'
     assert restored[0]['createdAt'].endswith('+00:00')
 
     for index in range(workspace.MAX_CHAT_ENTRIES + 2):
@@ -128,6 +141,36 @@ def test_scene_chat_is_saved_restored_and_bounded(client):
     bounded = client.get('/workspace/scenes/workspace-test/chat').json()['entries']
     assert len(bounded) == workspace.MAX_CHAT_ENTRIES
     assert bounded[-1]['content'] == f'Answer {workspace.MAX_CHAT_ENTRIES + 1}'
+
+
+def test_codex_activity_keeps_mcp_arguments_results_and_failure_details():
+    events = []
+    _activity({'method': 'item/started', 'params': {'item': {
+        'id': 'call-7', 'type': 'mcpToolCall', 'tool': 'inspect_scene',
+        'arguments': {'scene_id': 'workspace-test', 'include': ['warnings', 'objects']},
+    }}}, events.append)
+    _activity({'method': 'item/completed', 'params': {'item': {
+        'id': 'call-7', 'type': 'mcpToolCall', 'tool': 'inspect_scene',
+        'status': 'completed', 'result': {'objects': 2, 'warnings': []}, 'durationMs': 19.5,
+    }}}, events.append)
+    _activity({'method': 'item/completed', 'params': {'item': {
+        'id': 'call-8', 'type': 'mcpToolCall', 'tool': 'rename_object',
+        'status': 'failed', 'error': {'message': 'Object no longer exists.'},
+    }}}, events.append)
+
+    assert events[0]['arguments']['include'] == ['warnings', 'objects']
+    assert events[0]['callId'] == 'call-7' and events[0]['state'] == 'running'
+    assert events[1]['result'] == {'objects': 2, 'warnings': []}
+    assert events[1]['durationMs'] == 19.5 and events[1]['state'] == 'complete'
+    assert events[2]['result'] == {'message': 'Object no longer exists.'}
+    assert events[2]['state'] == 'failed'
+    assert all(event['createdAt'].endswith('+00:00') for event in events)
+
+
+def test_chat_renderer_uses_text_nodes_for_untrusted_content():
+    script = (Path(__file__).parents[1] / 'src/scenelyr/web/workspace.js').read_text()
+    assert 'copy.textContent=message' in script
+    assert 'pre.textContent=structuredText(activity[key])' in script
 
 
 def test_model_picker_uses_app_server_catalog(client, monkeypatch):
